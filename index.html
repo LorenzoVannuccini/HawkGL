@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">      
+        <!--
+            Copyright © 2019 Lorenzo Vannuccini, blackravenprod@gmail.com
+            http://www.blackravenproduction.com/portfolio/lorenzo_vannuccini
+
+            This framework is provided 'as-is', without any express or implied
+            warranty. In no event will the authors be held liable for any damages
+            arising from the use of this framework.
+
+            Permission is granted to anyone to use this framework for any purpose,
+            including commercial applications, and to alter it and redistribute it
+            freely, subject to the following restrictions:
+
+                1. The origin of this framework must not be misrepresented; you must not
+                claim that you wrote the original framework. If you use this framework
+                in a product, an acknowledgment in the product documentation would be
+                appreciated but is not required.
+
+                2. Altered source versions must be plainly marked as such, and must not be
+                misrepresented as being the original software.
+
+                3. This notice may not be removed or altered from any source distribution.
+        -->
+        <title> Hawk GL - © 2019 Lorenzo Vannuccini </title>
+        <script src="HawkGL_SDK/hawkGL.js"></script>
+    </head>
+    <body style="margin:0; padding:0;">
+        
+        <canvas id="glCanvas" style="width:100vw; height:100vh; display:inline-block; position:fixed;"></canvas>
+        <div style="position:fixed; display:inline-block; padding-top:3px; padding-left:4px; color:white; text-shadow:-1px -1px 0 #000, 1px -1px 0 #000,-1px 1px 0 #000, 1px 1px 0 #000;">FPS:&nbsp; <label id="fpsLabel"></label></div>
+        <div id="loadingSplash" style="position:fixed; display:inline-block; width:100%; height:100%; background-color:rgba(0, 0, 0, 0.75);">
+            <div style="position:fixed; display:inline-block; width:60px; height:60px; margin-top:calc(50vh - 30px); margin-left:calc(50vw - 30px); background-image:url('Resources/Icons/loading.gif'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
+        </div>
+
+        <script type="text/javascript">
+            
+        let fpsLabel = document.getElementById("fpsLabel");
+        let loadingSplash = document.getElementById("loadingSplash");
+        
+        let glCanvas = document.getElementById("glCanvas");
+        let ctx = new glContext(glCanvas);
+        
+        ctx.onAssetLoading( function(rate, pending) {
+            loadingSplash.style.display = (pending ? "inline-block" : "none");
+        });
+
+        let lightVector = glVector3f.normalize(1.0);
+        
+        let forwardPassProgram = ctx.createProgram("Resources/Shaders/forward.vert", "Resources/Shaders/forward.frag"); 
+        let shadowPassProgram  = ctx.createProgram("Resources/Shaders/blank.vert",   "Resources/Shaders/blank.frag");
+       
+        let shadowMatrixUniform = forwardPassProgram.createUniformMat4("shadowMatrix");
+        forwardPassProgram.createUniformVec3("lightVector", lightVector);
+        forwardPassProgram.createUniformSampler("diffuseMap", 0);
+        forwardPassProgram.createUniformSampler("shadowMap",  1);
+
+        let mesh = ctx.createMeshFromObjFile("Resources/Models/model.obj", function(mesh) {
+            console.log("Mesh vertices: " + mesh.size());
+        });
+        /*
+            mesh = glMesh.createSphere(ctx, 0.75, 32, 32);
+            let box  = glMesh.createBox(ctx, 0.5, 2.0, 0.5).transform(glMatrix4x4f.translationMatrix(0.0, 1.0, 0.0)); 
+            box.add(glMesh.createSphere(ctx, 0.25, 16, 16).transform(glMatrix4x4f.translationMatrix(0.0, +2.25, 0.0)));
+            box.add(glMesh.createSphere(ctx, 0.25, 16, 16).transform(glMatrix4x4f.translationMatrix(0.0, -2.25, 0.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(90.0,  1.0, 0.0, 0.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(90.0,  1.0, 0.0, 0.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(90.0,  1.0, 0.0, 0.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(90.0,  1.0, 0.0, 0.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(90.0,  0.0, 0.0, 1.0)));
+            mesh.add(box.transform(glMatrix4x4f.rotationMatrix(180.0, 0.0, 0.0, 1.0)));
+        */
+        
+        let textureWood       = ctx.createTexture("Resources/Textures/hawk.jpg");
+        let textureBackground = ctx.createTexture("Resources/Textures/background.jpg");
+        
+        let shadowPassFramebuffer = new glFramebuffer(ctx, 1024, 1024);
+        let shadowMap = shadowPassFramebuffer.createDepthAttachment24();
+
+        let forwardPassFrameBuffer          = null; 
+        let forwardPassRenderTextureColor   = null;
+
+        ctx.onInit( function(gl)
+        { 
+            gl.enable(gl.CULL_FACE);
+            gl.cullFace(gl.BACK);
+
+            gl.enable(gl.DEPTH_TEST);
+            gl.depthFunc(gl.LESS);
+            gl.clearDepth(1.0);
+            gl.depthMask(true);
+        });
+
+        ctx.onResize( function(gl, width, height)
+        { 
+            console.log("Context Resized: " + width + "x" + height);
+
+            if(forwardPassFrameBuffer != null) forwardPassFrameBuffer.free();
+
+            forwardPassFrameBuffer = new glRenderbuffer(ctx, width, height);
+            forwardPassFrameBuffer.createDepthAttachment16();
+        
+            forwardPassRenderTextureColor = forwardPassFrameBuffer.createColorAttachmentRGBA8();
+        });
+        
+        let camera = new glArcBallCamera(ctx, 0.5);
+        camera.setOrientation(new glVector3f(0.0, 1.0, 0.0), 45.0);
+
+        glCanvas.onmousedown = glCanvas.onmousemove = function(e) {
+            if(e.buttons > 0) camera.drag(e.clientX, e.clientY);
+        }
+
+        glCanvas.onmouseup = function(e) {
+            camera.stopDrag();
+        }
+
+        ctx.onFrameUpdate( function(gl, dt, timeElapsed)
+        {         
+            ctx.loadIdentity();
+            ctx.translate(0.0, 0.0, 1.25);
+            camera.update(0.625);
+
+            // --------------------------------------------------------
+
+            shadowPassProgram.bind();
+            shadowPassFramebuffer.bind();
+            
+            gl.colorMask(false, false, false, false);
+
+            gl.clear(gl.DEPTH_BUFFER_BIT);
+            gl.cullFace(gl.FRONT);
+
+            let nodeAABB = camera.getMatrix4x4f().mul(mesh.getBoundingBox());
+            ctx.setShadowViewProjectionMatrix(glVector3f.flip(lightVector), nodeAABB.position, nodeAABB.size);
+            
+            ctx.pushMatrix();
+           // ctx.rotate(timeElapsed * 33.0, 1.0, 0.0, 0.0);
+           // ctx.rotate(timeElapsed * 90.0, 0.0, 1.0, 0.0);
+            ctx.mulMatrix(camera.getMatrix4x4f());
+
+            shadowMatrixUniform.set(ctx.getModelViewProjectionMatrix());
+            
+            mesh.render();
+            ctx.popMatrix();
+                
+            gl.colorMask(true, true, true, true);
+            
+            // --------------------------------------------------------
+
+            forwardPassProgram.bind();
+            forwardPassFrameBuffer.bind([forwardPassRenderTextureColor]);
+            
+            gl.clearColor(0.25, 0.25, 0.25, 1.0);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.cullFace(gl.BACK);
+            
+            textureBackground.blit();
+                           
+            ctx.setPerspectiveProjection(60.0, ctx.getAspectRatio(), 0.1, 99.0);
+            ctx.lookAt(new glVector3f(0.0, 0.0, 6.0), new glVector3f(0.0));
+
+            ctx.pushMatrix();
+            // ctx.rotate(timeElapsed * 33.0, 1.0, 0.0, 0.0);
+            // ctx.rotate(timeElapsed * 90.0, 0.0, 1.0, 0.0);
+            ctx.mulMatrix(camera.getMatrix4x4f());
+
+            textureWood.bind(0);
+            shadowMap.bindAsShadowMap(1);
+            
+            mesh.render();
+            
+            forwardPassFrameBuffer.unbind();
+
+            ctx.setViewport(0, 0, ctx.getWidth(), ctx.getHeight());
+            forwardPassRenderTextureColor.blit();
+            forwardPassFrameBuffer.invalidate();
+        });
+
+        ctx.onFramerateUpdate( function(fps) {
+            fpsLabel.innerHTML = fps;  
+        });
+        
+        ctx.run();
+        
+        </script>
+
+    </body>
+</html>

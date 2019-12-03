@@ -1,0 +1,146 @@
+//
+//  Copyright © 2019 Lorenzo Vannuccini, blackravenprod@gmail.com
+//  http://www.blackravenproduction.com/portfolio/lorenzo_vannuccini
+//
+//  This framework is provided 'as-is', without any express or implied
+//  warranty. In no event will the authors be held liable for any damages
+//  arising from the use of this framework.
+//
+//  Permission is granted to anyone to use this framework for any purpose,
+//  including commercial applications, and to alter it and redistribute it
+//  freely, subject to the following restrictions:
+//
+//    1. The origin of this framework must not be misrepresented; you must not
+//       claim that you wrote the original framework. If you use this framework
+//       in a product, an acknowledgment in the product documentation would be
+//       appreciated but is not required.
+//
+//    2. Altered source versions must be plainly marked as such, and must not be
+//       misrepresented as being the original software.
+//
+//    3. This notice may not be removed or altered from any source distribution.
+//
+
+let glMesh = function(ctx, meshData)
+{
+    glPrimitive.call(this, ctx, meshData);    
+    this.__is_glMesh = true;
+}
+
+glMesh.prototype = Object.create(glPrimitive.prototype);
+
+glMesh.prototype.add = function(meshData)
+{
+    if(meshData.__is_glPrimitive) meshData = meshData.__vertices;
+
+    let nVertices = meshData.length;
+    if(nVertices > 0 && (nVertices % 3) == 0) glPrimitive.prototype.add.call(this, meshData);    
+}
+
+glMesh.prototype.__updateVolume = function()
+{
+    this.__aabb.clear();
+    
+    this.__volumeRadius = 0.0;
+    this.__volumeCenter.set(0.0);
+    
+    let nVertices = this.size();
+    if(nVertices > 0)
+    {
+        let areaSum  = 0.0;
+        for(let i = 0; i != nVertices; i += 3)
+        {
+            let face = [this.__vertices[i + 0].position, this.__vertices[i + 1].position, this.__vertices[i + 2].position];
+
+            let area = glVector3f.cross(glVector3f.sub(face[1], face[0]), glVector3f.sub(face[2], face[0])).length() * 0.5;
+            let center = glVector3f.div(glVector3f.add(glVector3f.add(face[0], face[1]), face[2]), 3.0);
+            
+            this.__volumeCenter.add(glVector3f.mul(center, area));
+            
+            this.__aabb.fit(face[0]);
+            this.__aabb.fit(face[1]);
+            this.__aabb.fit(face[2]);
+
+            areaSum += area;
+        }
+
+        this.__volumeCenter.div(areaSum);
+
+        for(let i = 0; i != nVertices; ++i) this.__volumeRadius = Math.max(this.__volumeRadius, glVector3f.squaredDistance(this.__volumeCenter, this.__vertices[i].position));
+        this.__volumeRadius = Math.sqrt(this.__volumeRadius);
+    }
+    
+    this.__shouldUpdateVolume = false;
+}
+
+glMesh.prototype.render = function() {
+    glPrimitive.prototype.render.call(this, this.__ctx.getGL().TRIANGLES);    
+}
+
+glMesh.createRectangle = function(ctx, w, h)
+{
+    w *= 0.5;
+    h *= 0.5;
+    
+    return new glMesh(ctx, [new glVertex(-w, +h, 0.0,   0.0, 1.0,   0.0, 0.0, 1.0), new glVertex(-w, -h, 0.0,   0.0, 0.0,   0.0, 0.0, 1.0), new glVertex(+w, -h, 0.0,   1.0, 0.0,   0.0, 0.0, 1.0),
+                            new glVertex(+w, -h, 0.0,   1.0, 0.0,   0.0, 0.0, 1.0), new glVertex(+w, +h, 0.0,   1.0, 1.0,   0.0, 0.0, 1.0), new glVertex(-w, +h, 0.0,   0.0, 1.0,   0.0, 0.0, 1.0)]);
+}
+
+glMesh.createPlane = function(ctx, w, h) {
+    return (glMesh.createRectangle(ctx, w, h).transform(glMatrix4x4f.rotationMatrix(-90.0, 1.0, 0.0, 0.0)));
+}
+
+glMesh.createCube = function(ctx, size)
+{
+    let box = new glMesh(ctx);
+    let quad = glMesh.createRectangle(ctx, size, size).transform(glMatrix4x4f.translationMatrix(0.0, 0.0, size * 0.5));
+
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(90.0,  0.0, 1.0, 0.0)));
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(90.0,  0.0, 1.0, 0.0)));
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(90.0,  0.0, 1.0, 0.0)));
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(90.0,  0.0, 1.0, 0.0)));
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(90.0,  1.0, 0.0, 0.0)));
+    box.add(quad.transform(glMatrix4x4f.rotationMatrix(180.0, 1.0, 0.0, 0.0)));
+
+    return box;
+}
+
+glMesh.createBox = function(ctx, w, h, d) {
+    return (glMesh.createCube(ctx, 1.0).transform(glMatrix4x4f.scaleMatrix(w, h, d)));
+}
+
+glMesh.createSphere = function(ctx, radius, nSlices, nStacks)
+{
+    let sphere = new glMesh(ctx);
+    let vertices = new Array(nSlices * nStacks);
+
+    let R = 1.0 / (nSlices - 1);
+    let S = 1.0 / (nStacks - 1);
+
+    for(let r = 0; r < nSlices; ++r) for(let s = 0; s < nStacks; ++s)
+    {
+        let p = glVector3f.normalize(+Math.cos(+Math.PI * 2.0 * s * S) * Math.sin(Math.PI * r * R),
+                                     -Math.cos(-Math.PI * 2.0 + Math.PI * r * R),
+                                     +Math.sin(+Math.PI * 2.0 * s * S) * Math.sin(Math.PI * r * R));
+
+        vertices[r * nSlices + s] = new glVertex(p.x * radius, p.y * radius, p.z * radius, 1.0 - s * S, r * R, p.x, p.y, p.z);
+    }
+    
+    for(let r = 0; r < nSlices - 1; ++r) for(let s = 0; s < nStacks - 1; ++s)
+    {
+        let curRow  = r * nStacks;
+        let nextRow = (r + 1) * nStacks;
+
+        let i1 = curRow  + s;
+        let i2 = nextRow + s;
+        let i3 = nextRow + s + 1;
+
+        let i4 = curRow  + s;
+        let i5 = nextRow + s + 1;
+        let i6 = curRow  + s + 1;
+
+        sphere.add([vertices[i1], vertices[i2], vertices[i3], vertices[i4], vertices[i5], vertices[i6]]);
+    }
+    
+    return sphere;
+}
