@@ -37,7 +37,7 @@ MinimalGLTFLoader.Type2NumOfComponent =
     'MAT4':   16
 };
 
-var Accessor = MinimalGLTFLoader.Accessor = function (a, bufferViewObject)
+MinimalGLTFLoader.Accessor = function (a, bufferViewObject)
 {
     this.bufferView = bufferViewObject;
     this.componentType = a.componentType;   // required
@@ -55,7 +55,7 @@ var Accessor = MinimalGLTFLoader.Accessor = function (a, bufferViewObject)
     this.extras = a.extras !== undefined ? a.extras : null;
 };
 
-var BufferView = MinimalGLTFLoader.BufferView = function(bf, bufferData)
+MinimalGLTFLoader.BufferView = function(bf, bufferData)
 {
     this.byteLength = bf.byteLength;    //required
     this.byteOffset = bf.byteOffset !== undefined ? bf.byteOffset : 0;
@@ -68,7 +68,7 @@ var BufferView = MinimalGLTFLoader.BufferView = function(bf, bufferData)
     this.extras = bf.extras !== undefined ? bf.extras : null;
 };
 
-var Scene = MinimalGLTFLoader.Scene = function (gltf, s)
+MinimalGLTFLoader.Scene = function (gltf, s)
 {
     this.name = s.name !== undefined ? s.name : null;
     this.nodes = new Array(s.nodes.length);    // root node object of this scene
@@ -80,7 +80,7 @@ var Scene = MinimalGLTFLoader.Scene = function (gltf, s)
     this.extras = s.extras !== undefined ? s.extras : null;
 };
 
-var Node = MinimalGLTFLoader.Node = function (loader, n, nodeID)
+MinimalGLTFLoader.Node = function (loader, n, nodeID)
 {
     this.name = n.name !== undefined ? n.name : null;
     this.nodeID = nodeID;
@@ -98,7 +98,7 @@ var Node = MinimalGLTFLoader.Node = function (loader, n, nodeID)
     this.extras = n.extras !== undefined ? n.extras : null;
 };
 
-Node.prototype.getTransformMatrixFromTRS = function(translation, rotation, scale)
+MinimalGLTFLoader.Node.prototype.getTransformMatrixFromTRS = function(translation, rotation, scale)
 {
     this.rotation = ((rotation != null) ? new glVector4f(rotation[0], rotation[1], rotation[2], rotation[3]) : new glVector4f(0.0, 0.0, 0.0, 1.0));
     this.translation = ((translation != null) ? new glVector3f(translation[0], translation[1], translation[2]) : new glVector3f(0.0));
@@ -107,7 +107,7 @@ Node.prototype.getTransformMatrixFromTRS = function(translation, rotation, scale
     this.updateMatrixFromTRS();
 };
 
-Node.prototype.updateMatrixFromTRS = function()
+MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
 {
     let q = this.rotation;
     let v = this.translation;
@@ -151,7 +151,7 @@ Node.prototype.updateMatrixFromTRS = function()
     this.matrix.mul(glMatrix4x4f.scaleMatrix(this.scale));
 }
 
-var Mesh = MinimalGLTFLoader.Mesh = function (loader, m, meshID)
+MinimalGLTFLoader.Mesh = function (loader, m, meshID)
 {
     this.meshID = meshID;
     this.name = m.name !== undefined ? m.name : null;
@@ -162,7 +162,7 @@ var Mesh = MinimalGLTFLoader.Mesh = function (loader, m, meshID)
 
     for (var i = 0, len = m.primitives.length; i < len; ++i) {
         p = m.primitives[i];
-        primitive = new Primitive(loader.glTF, p);
+        primitive = new MinimalGLTFLoader.Primitive(loader.glTF, p);
         this.primitives.push(primitive);
     }
 
@@ -171,7 +171,7 @@ var Mesh = MinimalGLTFLoader.Mesh = function (loader, m, meshID)
     
 };
 
-var Primitive = MinimalGLTFLoader.Primitive = function (gltf, p)
+MinimalGLTFLoader.Primitive = function (gltf, p)
 {
     // <attribute name, accessor id>, required
     // get hook up with accessor object in _postprocessing
@@ -203,7 +203,7 @@ var Primitive = MinimalGLTFLoader.Primitive = function (gltf, p)
     this.extras = p.extras !== undefined ? p.extras : null;
 };
 
-var TextureInfo = MinimalGLTFLoader.TextureInfo = function (json)
+MinimalGLTFLoader.TextureInfo = function (json)
 {
     this.index = json.index;
     this.texCoord = json.texCoord !== undefined ? json.texCoord : 0 ;
@@ -212,19 +212,19 @@ var TextureInfo = MinimalGLTFLoader.TextureInfo = function (json)
     this.extras = json.extras !== undefined ? json.extras : null;
 };
 
-var PbrMetallicRoughness = MinimalGLTFLoader.PbrMetallicRoughness = function (json)
+MinimalGLTFLoader.PbrMetallicRoughness = function (json)
 {
     this.baseColorFactor = json.baseColorFactor !== undefined ? json.baseColorFactor : [1, 1, 1, 1];
-    this.baseColorTexture = json.baseColorTexture !== undefined ? new TextureInfo(json.baseColorTexture): null;
+    this.baseColorTexture = json.baseColorTexture !== undefined ? new MinimalGLTFLoader.TextureInfo(json.baseColorTexture): null;
     this.metallicFactor = json.metallicFactor !== undefined ? json.metallicFactor : 1 ;
     this.roughnessFactor = json.roughnessFactor !== undefined ? json.roughnessFactor : 1 ;
-    this.metallicRoughnessTexture = json.metallicRoughnessTexture !== undefined ? new TextureInfo(json.metallicRoughnessTexture): null;
+    this.metallicRoughnessTexture = json.metallicRoughnessTexture !== undefined ? new MinimalGLTFLoader.TextureInfo(json.metallicRoughnessTexture): null;
 
     this.extensions = json.extensions !== undefined ? json.extensions : null;
     this.extras = json.extras !== undefined ? json.extras : null;
 };
 
-var NormalTextureInfo = MinimalGLTFLoader.NormalTextureInfo = function (json)
+MinimalGLTFLoader.NormalTextureInfo = function (json)
 {
     this.index = json.index;
     this.texCoord = json.texCoord !== undefined ? json.texCoord : 0 ;
@@ -234,7 +234,7 @@ var NormalTextureInfo = MinimalGLTFLoader.NormalTextureInfo = function (json)
     this.extras = json.extras !== undefined ? json.extras : null;
 };
 
-var OcclusionTextureInfo = MinimalGLTFLoader.OcclusionTextureInfo = function (json)
+MinimalGLTFLoader.OcclusionTextureInfo = function (json)
 {
     this.index = json.index;
     this.texCoord = json.texCoord !== undefined ? json.texCoord : 0 ;
@@ -244,19 +244,19 @@ var OcclusionTextureInfo = MinimalGLTFLoader.OcclusionTextureInfo = function (js
     this.extras = json.extras !== undefined ? json.extras : null;
 };
 
-var Material = MinimalGLTFLoader.Material = function (m)
+MinimalGLTFLoader.Material = function (m)
 {
     this.name = m.name !== undefined ? m.name : null;
     
-    this.pbrMetallicRoughness = m.pbrMetallicRoughness !== undefined ? new PbrMetallicRoughness( m.pbrMetallicRoughness ) : new PbrMetallicRoughness({
+    this.pbrMetallicRoughness = m.pbrMetallicRoughness !== undefined ? new MinimalGLTFLoader.PbrMetallicRoughness( m.pbrMetallicRoughness ) : new MinimalGLTFLoader.PbrMetallicRoughness({
         baseColorFactor: [1, 1, 1, 1],
         metallicFactor: 1,
         metallicRoughnessTexture: 1
     });
    
-    this.normalTexture = m.normalTexture !== undefined ? new NormalTextureInfo(m.normalTexture) : null;
-    this.occlusionTexture = m.occlusionTexture !== undefined ? new OcclusionTextureInfo(m.occlusionTexture) : null;
-    this.emissiveTexture = m.emissiveTexture !== undefined ? new TextureInfo(m.emissiveTexture) : null;
+    this.normalTexture = m.normalTexture !== undefined ? new MinimalGLTFLoader.NormalTextureInfo(m.normalTexture) : null;
+    this.occlusionTexture = m.occlusionTexture !== undefined ? new MinimalGLTFLoader.OcclusionTextureInfo(m.occlusionTexture) : null;
+    this.emissiveTexture = m.emissiveTexture !== undefined ? new MinimalGLTFLoader.TextureInfo(m.emissiveTexture) : null;
 
     this.emissiveFactor = m.emissiveFactor !== undefined ? m.emissiveFactor : [0, 0, 0];
     this.alphaMode = m.alphaMode !== undefined ? m.alphaMode : "OPAQUE";
@@ -267,7 +267,7 @@ var Material = MinimalGLTFLoader.Material = function (m)
     this.extras = m.extras !== undefined ? m.extras : null;
 };
 
-var Skin = MinimalGLTFLoader.Skin = function (gltf, s, skinID) {
+MinimalGLTFLoader.Skin = function (gltf, s, skinID) {
     this.name = s.name !== undefined ? s.name : null;
     this.skinID = skinID;
 
@@ -297,7 +297,7 @@ var Skin = MinimalGLTFLoader.Skin = function (gltf, s, skinID) {
 // animation has no potential plan for progressive rendering I guess
 // so everything happens after all buffers are loaded
 
-var Target = MinimalGLTFLoader.Target = function (t) {
+MinimalGLTFLoader.Target = function (t) {
     this.nodeID = t.node !== undefined ? t.node : null ;  //id, to be hooked up to object later
     this.path = t.path;     //required, string
 
@@ -305,15 +305,15 @@ var Target = MinimalGLTFLoader.Target = function (t) {
     this.extras = t.extras !== undefined ? t.extras : null;
 };
 
-var Channel = MinimalGLTFLoader.Channel = function (c, animation) {
+MinimalGLTFLoader.Channel = function (c, animation) {
     this.sampler = animation.samplers[c.sampler];   //required
-    this.target = new Target(c.target);     //required
+    this.target = new MinimalGLTFLoader.Target(c.target);     //required
 
     this.extensions = c.extensions !== undefined ? c.extensions : null;
     this.extras = c.extras !== undefined ? c.extras : null;
 };
 
-var AnimationSampler = MinimalGLTFLoader.AnimationSampler = function (gltf, s) {
+MinimalGLTFLoader.AnimationSampler = function (gltf, s) {
     this.input = gltf.accessors[s.input];   //required, accessor object
     this.output = gltf.accessors[s.output]; //required, accessor object
 
@@ -343,7 +343,7 @@ var AnimationSampler = MinimalGLTFLoader.AnimationSampler = function (gltf, s) {
 var animationOutputValueVec4a = new Array(4);
 var animationOutputValueVec4b = new Array(4);
 
-AnimationSampler.prototype.getValue = function (t) {
+MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t) {
     if (t > this.endT) {
         t -= this.inputMax * Math.ceil((t - this.endT) / this.inputMax);
         this.curIdx = 0;
@@ -403,7 +403,7 @@ AnimationSampler.prototype.getValue = function (t) {
     this.curValue = interpolate(u);
 };
 
-var Animation = MinimalGLTFLoader.Animation = function (gltf, a) {
+MinimalGLTFLoader.Animation = function (gltf, a) {
     this.name = a.name !== undefined ? a.name : null;
 
     var i, len;
@@ -412,14 +412,14 @@ var Animation = MinimalGLTFLoader.Animation = function (gltf, a) {
     this.samplers = []; // required, array of animation sampler
     
     for (i = 0, len = a.samplers.length; i < len; i++) {
-        this.samplers[i] = new AnimationSampler(gltf, a.samplers[i]);
+        this.samplers[i] = new MinimalGLTFLoader.AnimationSampler(gltf, a.samplers[i]);
         this.duration = Math.max(this.duration, this.samplers[i].endT);
     }
 
     this.channels = [];     //required, array of channel
     
     for (i = 0, len = a.channels.length; i < len; i++) {
-        this.channels[i] = new Channel(a.channels[i], this);
+        this.channels[i] = new MinimalGLTFLoader.Channel(a.channels[i], this);
     }
 
     this.extensions = a.extensions !== undefined ? a.extensions : null;
@@ -652,7 +652,7 @@ glTFAnimator.prototype.size = function() {
     return this.__animations.size;
 }
 
-var glTFModel = MinimalGLTFLoader.glTFModel = function (json)
+MinimalGLTFLoader.glTFModel = function (json)
 {
     this.json = json;
     this.defaultScene = json.scene !== undefined ? json.scene : 0;
@@ -745,32 +745,32 @@ glTFLoader.prototype._postprocess = function ()
     // bufferviews
     if (this.glTF.bufferViews) {
         for (let i = 0, leni = this.glTF.bufferViews.length; i < leni; i++) {
-            this.glTF.bufferViews[i] = new BufferView(this.glTF.json.bufferViews[i], this._buffers[ this.glTF.json.bufferViews[i].buffer ]);
+            this.glTF.bufferViews[i] = new MinimalGLTFLoader.BufferView(this.glTF.json.bufferViews[i], this._buffers[ this.glTF.json.bufferViews[i].buffer ]);
         }
     }
 
     // accessors
     if (this.glTF.accessors) {
         for (let i = 0, leni = this.glTF.accessors.length; i < leni; i++) {
-            this.glTF.accessors[i] = new Accessor(this.glTF.json.accessors[i], this.glTF.bufferViews[ this.glTF.json.accessors[i].bufferView ]);
+            this.glTF.accessors[i] = new MinimalGLTFLoader.Accessor(this.glTF.json.accessors[i], this.glTF.bufferViews[ this.glTF.json.accessors[i].bufferView ]);
         }
     }
 
     // load all materials
     if (this.glTF.materials) {
         for (let i = 0, leni = this.glTF.materials.length; i < leni; i++) {
-            this.glTF.materials[i] = new Material(this.glTF.json.materials[i]);
+            this.glTF.materials[i] = new MinimalGLTFLoader.Material(this.glTF.json.materials[i]);
         }
     }
 
     // mesh
     for (let i = 0, leni = this.glTF.meshes.length; i < leni; i++) {
-        this.glTF.meshes[i] = new Mesh(this, this.glTF.json.meshes[i], i);
+        this.glTF.meshes[i] = new MinimalGLTFLoader.Mesh(this, this.glTF.json.meshes[i], i);
     }
 
     // node
     for (let i = 0, leni = this.glTF.nodes.length; i < leni; i++) {
-        this.glTF.nodes[i] = new Node(this, this.glTF.json.nodes[i], i);
+        this.glTF.nodes[i] = new MinimalGLTFLoader.Node(this, this.glTF.json.nodes[i], i);
     }
 
     // node: hook up children
@@ -781,7 +781,7 @@ glTFLoader.prototype._postprocess = function ()
     }
 
     for (let i = 0, leni = this.glTF.scenes.length; i < leni; i++) {
-        this.glTF.scenes[i] = new Scene(this.glTF, this.glTF.json.scenes[i]);
+        this.glTF.scenes[i] = new MinimalGLTFLoader.Scene(this.glTF, this.glTF.json.scenes[i]);
     }
 
     for(let mid = 0, lenMeshes = this.glTF.meshes.length; mid < lenMeshes; mid++)
@@ -863,7 +863,7 @@ glTFLoader.prototype._postprocess = function ()
     // load animations (when all accessors are loaded correctly)
     if (this.glTF.animations) { 
         for (i = 0, leni = this.glTF.animations.length; i < leni; i++) {
-            this.glTF.animations[i] = new Animation(this.glTF, this.glTF.json.animations[i]);
+            this.glTF.animations[i] = new MinimalGLTFLoader.Animation(this.glTF, this.glTF.json.animations[i]);
         }
     }
 
@@ -871,7 +871,7 @@ glTFLoader.prototype._postprocess = function ()
     // if (this.glTF.skins) {
     if (this.glTF.json.skins) {
         for (let i = 0, leni = this.glTF.skins.length, baseMatrixID = 0; i < leni; i++) {
-            this.glTF.skins[i] = new Skin(this.glTF, this.glTF.json.skins[i], i);
+            this.glTF.skins[i] = new MinimalGLTFLoader.Skin(this.glTF, this.glTF.json.skins[i], i);
             
             joints = this.glTF.skins[i].joints;
             for (j = 0, lenj = joints.length; j < lenj; j++) {
@@ -1063,7 +1063,7 @@ glTFLoader.prototype.parseGLTF = function(json, bufferLoaderCallback, textureLoa
     this._init();
    
     var loader = this;
-    loader.glTF = new glTFModel(json);
+    loader.glTF = new MinimalGLTFLoader.glTFModel(json);
 
     let pendingTasks = new DispatchQueue(); 
         
