@@ -40,8 +40,16 @@ glShader.prototype.getLastError = function() {
     return this.__ctx.getShaderInfoLog(this.__shaderID);
 }
 
-glShader.prototype.compile = function(shaderSource)
+glShader.prototype.compile = function(header, shaderSource)
 {
+    if(header != null && header.length > 0)
+    {
+        let appendingIndex = shaderSource.indexOf("\n");
+        if(appendingIndex < 0) appendingIndex = (shaderSource.length - 1);
+
+        shaderSource = shaderSource.substr(0, appendingIndex + 1) + header + shaderSource.substr(appendingIndex + 1);
+    }
+
     this.__ctx.shaderSource(this.__shaderID, shaderSource);
     this.__ctx.compileShader(this.__shaderID);
     
@@ -295,8 +303,11 @@ glProgram.prototype.compile = function()
 {
     let status = true;
 
-    status *= this.__vertexShader.compile(this.__vertexShaderSource);
-    status *= this.__fragmentShader.compile(this.__fragmentShaderSource);
+    let header = this.__ctx.__shadingConstants;
+    this.__headerLines = this.__ctx.__shadingConstantsLineCount;
+    
+    status *= this.__vertexShader.compile(header, this.__vertexShaderSource);
+    status *= this.__fragmentShader.compile(header, this.__fragmentShaderSource);
 
     if(status)
     {
@@ -321,18 +332,49 @@ glProgram.prototype.compile = function()
     return status;
 }
 
+glProgram.__parseShaderError = function(errorMsg, headerLines)
+{
+    let errorInfo =
+    {
+        message: errorMsg,
+        line: null
+    };
+
+    errorInfo.message = errorInfo.message.replace("ERROR: ", ""); // strip away first "ERROR:" tag
+
+    let nextErrorOccurence = errorInfo.message.indexOf("ERROR: "); // strip away other errors, if present
+    errorInfo.message = errorInfo.message.substr(0, ((nextErrorOccurence > 0) ? nextErrorOccurence : errorInfo.message.length)); 
+
+    errorInfo.line = (parseInt(errorInfo.message.substr(errorInfo.message.indexOf(":") + 1)) - ((headerLines != null) ? headerLines : 0));
+    if(isNaN(errorInfo.line)) errorInfo.line = null;
+    
+    errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
+    errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
+    
+    return errorInfo;
+}
+
 glProgram.prototype.getLastError = function() 
 {
     let error = "";
     let gl = this.__ctx.getGL();
-    
+
     let vsError = this.__vertexShader.getLastError();
     let fsError = this.__fragmentShader.getLastError();
-    
-    if(vsError.length > 0) error += this.__vertexShaderName   + " Error: " + vsError + "\n"; 
-    if(fsError.length > 0) error += this.__fragmentShaderName + " Error: " + fsError + "\n";
 
-    if(error.length < 1 && !gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += "Shader Program Error: linking failed\n";
+    if(vsError.length > 0)
+    {
+        let errorInfo = glProgram.__parseShaderError(vsError, this.__headerLines);
+        error += this.__vertexShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
+    }
+        
+    if(fsError.length > 0)
+    {
+        let errorInfo = glProgram.__parseShaderError(fsError, this.__headerLines);
+        error += this.__fragmentShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
+    }
+        
+    if(error.length < 1 && !gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += this.__fragmentShaderName + " Error: linking failed\n";
 
     return error;
 }

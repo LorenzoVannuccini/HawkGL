@@ -67,6 +67,9 @@ let glContext = function(canvasID)
         anisotropicFilter:        this.__gl.getExtension("EXT_texture_filter_anisotropic")
     };
 
+    this.__shadingConstants = "";
+    this.__shadingConstantsLineCount = 0;
+    
     this.createStandardUniformFloat("glTime", function(ctx) {
         return ctx.getTimeElapsed();
     });
@@ -618,6 +621,63 @@ glContext.prototype.__updateProgramStandardUniforms = function(program)
         let uniformInfo = this.__standardUniforms[i];
         program.getUniform(uniformInfo.name).set(uniformInfo.onUpdate(this));
     }
+}
+
+glContext.prototype.createShadingConstant = function(source)
+{
+    if(this.__shadingConstantsLineCount <= 0) source = "\n" + source;
+    source += "\n";
+   
+    for(let i = 0, e = source.length; i != e; ++i) if(source[i] == '\n') ++this.__shadingConstantsLineCount;
+    this.__shadingConstants += source;
+}
+
+glContext.prototype.createShadingConstantBool = function(name, value) {
+    this.createShadingConstant("#define " + name + " bool(" + ((value > 0) ? 1 : 0) + ")");
+}
+
+glContext.prototype.createShadingConstantInt = function(name, value) {
+    this.createShadingConstant("#define " + name + " int(" + parseInt(value) + ")");
+}
+
+glContext.prototype.createShadingConstantFloat = function(name, value) {
+    this.createShadingConstant("#define " + name + " float(" + parseFloat(value) + ")");
+}
+
+glContext.prototype.createShadingConstantVec2 = function(name, x, y)
+{
+    let v = new glVector2f(x, y);
+    this.createShadingConstant("#define " + name + " vec2(" + v.x + "," + v.y + ")");
+}
+
+glContext.prototype.createShadingConstantVec3 = function(name, x, y, z)
+{
+    let v = new glVector3f(x, y, z);
+    this.createShadingConstant("#define " + name + " vec3(" + v.x + "," + v.y + "," + v.z + ")");
+}
+
+glContext.prototype.createShadingConstantVec4 = function(name, x, y, z, w)
+{
+    let v = new glVector4f(x, y, z, w);
+    this.createShadingConstant("#define " + name + " vec4(" + v.x + "," + v.y + "," + v.z + "," + v.w + ")");
+}
+
+glContext.prototype.createShadingConstantMat2 = function(name, matrix)
+{
+    let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
+    this.createShadingConstant("#define " + name + " mat2(vec2(" + m[0] + "," + m[1] + "),vec2(" + m[2] + "," + m[3] + "))");
+}
+
+glContext.prototype.createShadingConstantMat3 = function(name, matrix)
+{
+    let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
+    this.createShadingConstant("#define " + name + " mat3(vec3(" + m[0] + "," + m[1] + "," + m[2] + "),vec3(" + m[3] + "," + m[4] + "," + m[5] + "),vec3(" + m[6] + "," + m[7] + "," + m[8] + "))");
+}
+
+glContext.prototype.createShadingConstantMat4 = function(name, matrix)
+{
+    let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
+    this.createShadingConstant("#define " + name + " mat4(vec4(" + m[0] + "," + m[1] + "," + m[2] + "," + m[3] + "),vec4(" + m[4] + "," + m[5] + "," + m[6] + "," + m[7] + "),vec4(" + m[8] + "," + m[9] + "," + m[10] + "," + m[11] + "),vec4(" + m[12] + "," + m[13] + "," + m[14] + "," + m[15] + "))");
 }
 
 glContext.__requestAnimationFrame = function(functor) {
