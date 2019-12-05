@@ -366,15 +366,13 @@ glProgram.prototype.getLastError = function()
     {
         let errorInfo = glProgram.__parseShaderError(vsError, this.__headerLines);
         error += this.__vertexShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
-    }
-        
-    if(fsError.length > 0)
+    }  
+    else if(fsError.length > 0)
     {
         let errorInfo = glProgram.__parseShaderError(fsError, this.__headerLines);
         error += this.__fragmentShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
-    }
-        
-    if(error.length < 1 && !gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += this.__fragmentShaderName + " Error: linking failed\n";
+
+    } else if(!gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += this.__fragmentShaderName + " Error: linking failed\n";
 
     return error;
 }
