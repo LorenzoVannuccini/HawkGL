@@ -57,7 +57,10 @@ let glContext = function(canvasID)
     this.__modelViewProjectionMatrix = glMatrix4x4f.identityMatrix();
     this.__shouldUpdateModelViewProjectionMatrix = false;
 
+    this.__uniformsUpdateCheckMaxComponents = 32;
+    
     this.__modelViewMatrixStack = [];
+    this.__activeUniformBlocks = [];
     this.__standardUniforms = [];
     this.__activeTextures = [];
 
@@ -66,10 +69,173 @@ let glContext = function(canvasID)
         textureFloatLinearFilter: this.__gl.getExtension("OES_texture_float_linear"),
         anisotropicFilter:        this.__gl.getExtension("EXT_texture_filter_anisotropic")
     };
-
-    this.__shadingConstants = "";
-    this.__shadingConstantsLineCount = 0;
     
+    this.__shadingGlobalConstants = "";
+    this.__shadingGlobalConstantsLineCount = 0;
+
+    this.__standardUniformsBlock = new glUniformBlock(this, "glStandardUniformsBlock");
+    this.__standardUniformsBlock.glIsAnimationActive             = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",                   glUniformBlock.Precision.LOWP);
+    this.__standardUniformsBlock.glAnimationMatricesCurrentFrame = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.HIGHP, 255);
+    this.__standardUniformsBlock.glAnimationMatricesLastFrame    = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.HIGHP, 255);
+    this.__standardUniformsBlock.glBonesMatricesCurrentFrame     = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.HIGHP, 255);
+    this.__standardUniformsBlock.glBonesMatricesLastFrame        = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.HIGHP, 255);
+    
+    if(!this.__standardUniformsBlock.empty())
+    {
+        this.__standardUniformsBlock.bind((this.__standardUniformsBlockUnitID = this.__gl.getParameter(this.__gl.MAX_UNIFORM_BUFFER_BINDINGS) - 1));
+        this.createShadingGlobalConstant(this.__standardUniformsBlock.getShaderSource());
+    }
+
+    this.createShadingGlobalConstant("#ifdef GLES_VERTEX_SHADER                                                                                                                  \n" +
+                                     "                                                                                                                                           \n" +
+                                     "in highp   vec3 glVertex;                                                                                                                  \n" +
+                                     "in highp   vec3 glNormal;                                                                                                                  \n" +
+                                     "in highp   vec2 glTexCoord;                                                                                                                \n" +
+                                     "in highp   vec4 glBonesWeights;                                                                                                            \n" +
+                                     "in mediump vec4 glBonesIndices;                                                                                                            \n" +
+                                     "in mediump vec4 glAnimationMatrixID;                                                                                                       \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat4 _glAnimationMatrixCurrentFrame = mat4(1.0);                                                                                           \n" +
+                                     "bool _glAnimationMatrixCurrentFrame_isSet = false;                                                                                         \n" +
+                                     "mat3 _glAnimationNormalMatrixCurrentFrame = mat3(1.0);                                                                                     \n" +
+                                     "bool _glAnimationNormalMatrixCurrentFrame_isSet = false;                                                                                   \n" +
+                                     "vec3 _glAnimationVertexCurrentFrame = vec3(0.0);                                                                                           \n" +
+                                     "bool _glAnimationVertexCurrentFrame_isSet = false;                                                                                         \n" +
+                                     "vec3 _glAnimationNormalCurrentFrame = vec3(0.0);                                                                                           \n" +
+                                     "bool _glAnimationNormalCurrentFrame_isSet = false;                                                                                         \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat4 _glAnimationMatrixLastFrame = mat4(1.0);                                                                                              \n" +
+                                     "bool _glAnimationMatrixLastFrame_isSet = false;                                                                                            \n" +
+                                     "mat3 _glAnimationNormalMatrixLastFrame = mat3(1.0);                                                                                        \n" +
+                                     "bool _glAnimationNormalMatrixLastFrame_isSet = false;                                                                                      \n" +
+                                     "vec3 _glAnimationVertexLastFrame = vec3(0.0);                                                                                              \n" +
+                                     "bool _glAnimationVertexLastFrame_isSet = false;                                                                                            \n" +
+                                     "vec3 _glAnimationNormalLastFrame = vec3(0.0);                                                                                              \n" +
+                                     "bool _glAnimationNormalLastFrame_isSet = false;                                                                                            \n" +
+                                     "                                                                                                                                           \n" +
+                                     "#define glIsAnimationActive (glIsAnimationActive > 0)                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat4 glGetCurrentFrameAnimationMatrix()                                                                                                    \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationMatrixCurrentFrame_isSet)                                                                                              \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        if(glIsAnimationActive)                                                                                                            \n" +
+                                     "        {                                                                                                                                  \n" +
+                                     "            if(int(glAnimationMatrixID) >= 0) _glAnimationMatrixCurrentFrame *= glAnimationMatricesCurrentFrame[int(glAnimationMatrixID)]; \n" +
+                                     "                                                                                                                                           \n" +
+                                     "            if(int(glBonesIndices.x) >= 0)                                                                                                 \n" +
+                                     "            {                                                                                                                              \n" +
+                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesCurrentFrame[int(glBonesIndices.x)] +                                  \n" +
+                                     "                                  glBonesWeights.y * glBonesMatricesCurrentFrame[int(glBonesIndices.y)] +                                  \n" +
+                                     "                                  glBonesWeights.z * glBonesMatricesCurrentFrame[int(glBonesIndices.z)] +                                  \n" +
+                                     "                                  glBonesWeights.w * glBonesMatricesCurrentFrame[int(glBonesIndices.w)];                                   \n" +
+                                     "                                                                                                                                           \n" +
+                                     "                _glAnimationMatrixCurrentFrame *= skinMatrix;                                                                              \n" +
+                                     "            }                                                                                                                              \n" +
+                                     "        }                                                                                                                                  \n" +
+                                     "                                                                                                                                           \n" +
+                                     "        _glAnimationMatrixCurrentFrame_isSet = true;                                                                                       \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationMatrixCurrentFrame;                                                                                                 \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat4 glGetLastFrameAnimationMatrix()                                                                                                       \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationMatrixLastFrame_isSet)                                                                                                 \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        if(glIsAnimationActive)                                                                                                            \n" +
+                                     "        {                                                                                                                                  \n" +
+                                     "            if(int(glAnimationMatrixID) >= 0) _glAnimationMatrixLastFrame *= glAnimationMatricesLastFrame[int(glAnimationMatrixID)];       \n" +
+                                     "                                                                                                                                           \n" +
+                                     "            if(int(glBonesIndices.x) >= 0)                                                                                                 \n" +
+                                     "            {                                                                                                                              \n" +
+                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesLastFrame[int(glBonesIndices.x)] +                                     \n" +
+                                     "                                  glBonesWeights.y * glBonesMatricesLastFrame[int(glBonesIndices.y)] +                                     \n" +
+                                     "                                  glBonesWeights.z * glBonesMatricesLastFrame[int(glBonesIndices.z)] +                                     \n" +
+                                     "                                  glBonesWeights.w * glBonesMatricesLastFrame[int(glBonesIndices.w)];                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "                _glAnimationMatrixLastFrame *= skinMatrix;                                                                                 \n" +
+                                     "            }                                                                                                                              \n" +
+                                     "        }                                                                                                                                  \n" +
+                                     "                                                                                                                                           \n" +
+                                     "        _glAnimationMatrixLastFrame_isSet = true;                                                                                          \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationMatrixLastFrame;                                                                                                    \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat3 glGetCurrentFrameAnimationNormalMatrix()                                                                                              \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationNormalMatrixCurrentFrame_isSet)                                                                                        \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationNormalMatrixCurrentFrame = mat3(inverse(transpose(glGetCurrentFrameAnimationMatrix())));                               \n" +
+                                     "        _glAnimationNormalMatrixCurrentFrame_isSet = true;                                                                                 \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationNormalMatrixCurrentFrame;                                                                                           \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "mat3 glGetLastFrameAnimationNormalMatrix()                                                                                                 \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationNormalMatrixLastFrame_isSet)                                                                                           \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationNormalMatrixLastFrame = mat3(inverse(transpose(glGetLastFrameAnimationMatrix())));                                     \n" +
+                                     "        _glAnimationNormalMatrixLastFrame_isSet = true;                                                                                    \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationNormalMatrixLastFrame;                                                                                              \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "vec3 glGetCurrentFrameAnimatedVertex()                                                                                                     \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationVertexCurrentFrame_isSet)                                                                                              \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationVertexCurrentFrame = (glGetCurrentFrameAnimationMatrix() * vec4(glVertex, 1.0)).xyz;                                   \n" +
+                                     "        _glAnimationVertexCurrentFrame_isSet = true;                                                                                       \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationVertexCurrentFrame;                                                                                                 \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "vec3 glGetLastFrameAnimatedVertex()                                                                                                        \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationVertexLastFrame_isSet)                                                                                                 \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationVertexLastFrame = (glGetLastFrameAnimationMatrix() * vec4(glVertex, 1.0)).xyz;                                         \n" +
+                                     "        _glAnimationVertexLastFrame_isSet = true;                                                                                          \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationVertexLastFrame;                                                                                                    \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "vec3 glGetCurrentFrameAnimatedNormal()                                                                                                     \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationNormalCurrentFrame_isSet)                                                                                              \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationNormalCurrentFrame = normalize(glGetCurrentFrameAnimationNormalMatrix() * glNormal);                                   \n" +
+                                     "        _glAnimationNormalCurrentFrame_isSet = true;                                                                                       \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationNormalCurrentFrame;                                                                                                 \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "vec3 glGetLastFrameAnimatedNormal()                                                                                                        \n" +
+                                     "{                                                                                                                                          \n" +
+                                     "    if(!_glAnimationNormalLastFrame_isSet)                                                                                                 \n" +
+                                     "    {                                                                                                                                      \n" +
+                                     "        _glAnimationNormalLastFrame = normalize(glGetLastFrameAnimationNormalMatrix() * glNormal);                                         \n" +
+                                     "        _glAnimationNormalLastFrame_isSet = true;                                                                                          \n" +
+                                     "    }                                                                                                                                      \n" +
+                                     "                                                                                                                                           \n" +
+                                     "    return _glAnimationNormalLastFrame;                                                                                                    \n" +
+                                     "}                                                                                                                                          \n" +
+                                     "                                                                                                                                           \n" +
+                                     "#define glVertex glGetCurrentFrameAnimatedVertex()                                                                                         \n" +
+                                     "#define glNormal glGetCurrentFrameAnimatedNormal()                                                                                         \n" +
+                                     "                                                                                                                                           \n" +
+                                     "#endif                                                                                                                                     \n");
+
     this.createStandardUniformFloat("glTime", function(ctx) {
         return ctx.getTimeElapsed();
     });
@@ -346,6 +512,8 @@ glContext.prototype.loadGltfFileFromMemory = function(gltf, bufferLoaderCallback
             scene.push(groups[i]);
         }
         
+        if(animator != null) animator.__ctx = self;
+
         if(onLoadCallback != null) onLoadCallback(scene, animator, gltf);
     });
 
@@ -612,6 +780,8 @@ glContext.prototype.__createProgramStandardUniforms = function(program)
         let uniformInfo = this.__standardUniforms[i];
         uniformInfo.onCreate(program, uniformInfo.name, uniformInfo.size);
     }
+
+    program.createUniformBlock("glStandardUniformsBlock", this.__standardUniformsBlockUnitID);
 }
 
 glContext.prototype.__updateProgramStandardUniforms = function(program)
@@ -621,63 +791,65 @@ glContext.prototype.__updateProgramStandardUniforms = function(program)
         let uniformInfo = this.__standardUniforms[i];
         program.getUniform(uniformInfo.name).set(uniformInfo.onUpdate(this));
     }
+
+    this.updateActiveAnimator();
 }
 
-glContext.prototype.createShadingConstant = function(source)
+glContext.prototype.createShadingGlobalConstant = function(source)
 {
-    if(this.__shadingConstantsLineCount <= 0) source = "\n" + source;
+    if(this.__shadingGlobalConstantsLineCount <= 0) source = "\n" + source;
     source += "\n";
    
-    for(let i = 0, e = source.length; i != e; ++i) if(source[i] == '\n') ++this.__shadingConstantsLineCount;
-    this.__shadingConstants += source;
+    for(let i = 0, e = source.length; i != e; ++i) if(source[i] == '\n') ++this.__shadingGlobalConstantsLineCount;
+    this.__shadingGlobalConstants += source;
 }
 
-glContext.prototype.createShadingConstantBool = function(name, value) {
-    this.createShadingConstant("#define " + name + " bool(" + ((value > 0) ? 1 : 0) + ")");
+glContext.prototype.createShadingGlobalConstantBool = function(name, value) {
+    this.createShadingGlobalConstant("#define " + name + " bool(" + ((value > 0) ? 1 : 0) + ")");
 }
 
-glContext.prototype.createShadingConstantInt = function(name, value) {
-    this.createShadingConstant("#define " + name + " int(" + parseInt(value) + ")");
+glContext.prototype.createShadingGlobalConstantInt = function(name, value) {
+    this.createShadingGlobalConstant("#define " + name + " int(" + parseInt(value) + ")");
 }
 
-glContext.prototype.createShadingConstantFloat = function(name, value) {
-    this.createShadingConstant("#define " + name + " float(" + parseFloat(value) + ")");
+glContext.prototype.createShadingGlobalConstantFloat = function(name, value) {
+    this.createShadingGlobalConstant("#define " + name + " float(" + parseFloat(value) + ")");
 }
 
-glContext.prototype.createShadingConstantVec2 = function(name, x, y)
+glContext.prototype.createShadingGlobalConstantVec2 = function(name, x, y)
 {
     let v = new glVector2f(x, y);
-    this.createShadingConstant("#define " + name + " vec2(" + v.x + "," + v.y + ")");
+    this.createShadingGlobalConstant("#define " + name + " vec2(" + v.x + "," + v.y + ")");
 }
 
-glContext.prototype.createShadingConstantVec3 = function(name, x, y, z)
+glContext.prototype.createShadingGlobalConstantVec3 = function(name, x, y, z)
 {
     let v = new glVector3f(x, y, z);
-    this.createShadingConstant("#define " + name + " vec3(" + v.x + "," + v.y + "," + v.z + ")");
+    this.createShadingGlobalConstant("#define " + name + " vec3(" + v.x + "," + v.y + "," + v.z + ")");
 }
 
-glContext.prototype.createShadingConstantVec4 = function(name, x, y, z, w)
+glContext.prototype.createShadingGlobalConstantVec4 = function(name, x, y, z, w)
 {
     let v = new glVector4f(x, y, z, w);
-    this.createShadingConstant("#define " + name + " vec4(" + v.x + "," + v.y + "," + v.z + "," + v.w + ")");
+    this.createShadingGlobalConstant("#define " + name + " vec4(" + v.x + "," + v.y + "," + v.z + "," + v.w + ")");
 }
 
-glContext.prototype.createShadingConstantMat2 = function(name, matrix)
+glContext.prototype.createShadingGlobalConstantMat2 = function(name, matrix)
 {
     let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
-    this.createShadingConstant("#define " + name + " mat2(vec2(" + m[0] + "," + m[1] + "),vec2(" + m[2] + "," + m[3] + "))");
+    this.createShadingGlobalConstant("#define " + name + " mat2(vec2(" + m[0] + "," + m[1] + "),vec2(" + m[2] + "," + m[3] + "))");
 }
 
-glContext.prototype.createShadingConstantMat3 = function(name, matrix)
+glContext.prototype.createShadingGlobalConstantMat3 = function(name, matrix)
 {
     let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
-    this.createShadingConstant("#define " + name + " mat3(vec3(" + m[0] + "," + m[1] + "," + m[2] + "),vec3(" + m[3] + "," + m[4] + "," + m[5] + "),vec3(" + m[6] + "," + m[7] + "," + m[8] + "))");
+    this.createShadingGlobalConstant("#define " + name + " mat3(vec3(" + m[0] + "," + m[1] + "," + m[2] + "),vec3(" + m[3] + "," + m[4] + "," + m[5] + "),vec3(" + m[6] + "," + m[7] + "," + m[8] + "))");
 }
 
-glContext.prototype.createShadingConstantMat4 = function(name, matrix)
+glContext.prototype.createShadingGlobalConstantMat4 = function(name, matrix)
 {
     let m = (matrix.__is_glMatrix4x4f ? matrix.__m : matrix);
-    this.createShadingConstant("#define " + name + " mat4(vec4(" + m[0] + "," + m[1] + "," + m[2] + "," + m[3] + "),vec4(" + m[4] + "," + m[5] + "," + m[6] + "," + m[7] + "),vec4(" + m[8] + "," + m[9] + "," + m[10] + "," + m[11] + "),vec4(" + m[12] + "," + m[13] + "," + m[14] + "," + m[15] + "))");
+    this.createShadingGlobalConstant("#define " + name + " mat4(vec4(" + m[0] + "," + m[1] + "," + m[2] + "," + m[3] + "),vec4(" + m[4] + "," + m[5] + "," + m[6] + "," + m[7] + "),vec4(" + m[8] + "," + m[9] + "," + m[10] + "," + m[11] + "),vec4(" + m[12] + "," + m[13] + "," + m[14] + "," + m[15] + "))");
 }
 
 glContext.__requestAnimationFrame = function(functor) {
@@ -969,10 +1141,14 @@ glContext.prototype.getActiveProgram = function() {
     return this.__activeProgram;
 }
 
+glContext.prototype.isProgramBound = function(program) {
+    return (this.__activeProgram == program);
+}
+
 glContext.prototype.bindProgram = function(program)
 {
     if(program != null && !program.ready()) program = null;
-    if(this.__activeProgram != program) this.__gl.useProgram(((this.__activeProgram = program) != null) ? program.getProgramID() : null);
+    if(!this.isProgramBound(program)) this.__gl.useProgram(((this.__activeProgram = program) != null) ? program.getProgramID() : null);
 }
 
 glContext.prototype.unbindProgram = function() {
@@ -990,6 +1166,31 @@ glContext.prototype.updateActiveProgram = function()
     }
 
     return false;
+}
+
+glContext.prototype.getActiveAnimator = function() {
+    return this.__activeAnimator;
+}
+
+glContext.prototype.isAnimatorBound = function(animator) {
+    return (this.__activeAnimator == animator);
+}
+
+glContext.prototype.bindAnimator = function(animator)
+{
+    if(!this.isAnimatorBound(animator))
+    {
+        this.__activeAnimator = animator;
+        this.__standardUniformsBlock.glIsAnimationActive.set((animator != null));
+    }
+}
+
+glContext.prototype.unbindAnimator = function() {
+    this.bindAnimator(null);
+}
+
+glContext.prototype.updateActiveAnimator = function() {
+    if(this.__activeAnimator != null) this.__activeAnimator.__updateContextAnimationMatrices();
 }
 
 glContext.prototype.bindVertexBuffer = function(buffer) {
@@ -1040,12 +1241,40 @@ glContext.prototype.bindRenderbuffer = function(renderbuffer) {
     this.__gl.bindRenderbuffer(this.__gl.RENDERBUFFER, (this.__activeRenderbuffer = renderbuffer));
 }
 
-glContext.prototype.unbindRenderbuffer= function() {
+glContext.prototype.unbindRenderbuffer = function() {
     this.bindRenderbuffer(null);
 }
 
 glContext.prototype.getActiveRenderbuffer = function() {
     return this.__activeRenderbuffer;
+}
+
+glContext.prototype.bindUniformBuffer = function(uniformBuffer) {
+    this.__gl.bindBuffer(this.__gl.UNIFORM_BUFFER, (this.__activeUniformBuffer = uniformBuffer));
+}
+
+glContext.prototype.unbindUniformBuffer = function() {
+    this.bindUniformBuffer(null);
+}
+
+glContext.prototype.getActiveUniformBuffer = function() {
+    return this.__activeUniformBuffer;
+}
+
+glContext.prototype.getActiveUniformBlock = function(unitID) {
+    return this.__activeUniformBlocks[((unitID != null) ? unitID : 0)];
+}
+
+glContext.prototype.isUniformBlockBound = function(unitID, uniformBlock) {
+    return (this.getActiveUniformBlock(unitID) == uniformBlock);
+}
+
+glContext.prototype.bindUniformBlock = function(unitID, uniformBlock) {
+    if(!this.isUniformBlockBound(unitID, uniformBlock)) this.__gl.bindBufferBase(this.__gl.UNIFORM_BUFFER, unitID, (this.__activeUniformBlocks[unitID] = uniformBlock).__uniformBufferObject);
+}
+
+glContext.prototype.unbindUniformBlockUnit = function(unitID) {
+    this.bindUniformBlock(unitID, null);
 }
 
 glContext.prototype.bindTextureUnit = function(unitID)

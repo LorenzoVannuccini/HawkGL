@@ -66,6 +66,7 @@ let glProgram = function(ctx, vertexShaderSource, fragmentShaderSource)
     let gl = this.__ctx.getGL();
 
     this.__uniforms = new Map();
+    this.__uniformBlockBases = new Map();
     this.__attributesLocations = new Map();
     this.__pendingUpdateUniforms = new Map();
 
@@ -133,6 +134,12 @@ glProgram.prototype.__getUniformLocation = function(name)
     return this.__ctx.getGL().getUniformLocation(this.__programID, name);
 }
 
+glProgram.prototype.__getUniformBlockLocation = function(name)
+{
+    this.bind();
+    return this.__ctx.getGL().getUniformBlockIndex(this.__programID, name);
+}
+
 glProgram.prototype.createUniformInt = function(name, value)
 {
     let uniform = new glUniformInt(this.__ctx.getGL(), this, name, value);
@@ -144,6 +151,15 @@ glProgram.prototype.createUniformInt = function(name, value)
 glProgram.prototype.createUniformArrayInt = function(name, size, array)
 {
     let uniform = new glUniformArrayInt(this.__ctx.getGL(), this, name, size, array);
+    this.__uniforms.set(name, uniform);
+   
+    return uniform;
+}
+
+glProgram.prototype.createUniformBlock = function(name, unitID)
+{
+    let uniform = new glUniformBlockIndex(this.__ctx.getGL(), this, name, unitID);
+    this.__uniformBlockBases.set(name, uniform);
     this.__uniforms.set(name, uniform);
    
     return uniform;
@@ -278,6 +294,15 @@ glProgram.prototype.update = function()
 {
     this.bind();
     
+    let self = this;
+    this.__uniformBlockBases.forEach( function(uniform)
+    {
+        let unitID = uniform.get();
+        let uniformBlock = self.__ctx.getActiveUniformBlock(unitID);
+        
+        if(uniformBlock != null) uniformBlock.update();
+    });
+
     this.__pendingUpdateUniforms.forEach( function(uniform) {
         uniform.update();
     });
@@ -303,11 +328,11 @@ glProgram.prototype.compile = function()
 {
     let status = true;
 
-    let header = this.__ctx.__shadingConstants;
-    this.__headerLines = this.__ctx.__shadingConstantsLineCount;
+    let header = this.__ctx.__shadingGlobalConstants;
+    this.__headerLines = (this.__ctx.__shadingGlobalConstantsLineCount + 1);
     
-    status *= this.__vertexShader.compile(header, this.__vertexShaderSource);
-    status *= this.__fragmentShader.compile(header, this.__fragmentShaderSource);
+    status *= this.__vertexShader.compile(  "#define GLES_VERTEX_SHADER 1\n"   + header, this.__vertexShaderSource);
+    status *= this.__fragmentShader.compile("#define GLES_FRAGMENT_SHADER 1\n" + header, this.__fragmentShaderSource);
 
     if(status)
     {
@@ -326,7 +351,7 @@ glProgram.prototype.compile = function()
 
     this.__ready = status;
     this.__uniforms.forEach( function(uniform) {
-        uniform.bindUniformLocation();
+        uniform.__bindUniformLocation();
     });
     
     return status;
@@ -346,7 +371,7 @@ glProgram.__parseShaderError = function(errorMsg, headerLines)
     errorInfo.message = errorInfo.message.substr(0, ((nextErrorOccurence > 0) ? nextErrorOccurence : errorInfo.message.length)); 
 
     errorInfo.line = (parseInt(errorInfo.message.substr(errorInfo.message.indexOf(":") + 1)) - ((headerLines != null) ? headerLines : 0));
-    if(isNaN(errorInfo.line)) errorInfo.line = null;
+    if(isNaN(errorInfo.line) || errorInfo.line < 0) errorInfo.line = null;
     
     errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
     errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
@@ -366,13 +391,15 @@ glProgram.prototype.getLastError = function()
     {
         let errorInfo = glProgram.__parseShaderError(vsError, this.__headerLines);
         error += this.__vertexShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
-    }  
-    else if(fsError.length > 0)
+    }
+        
+    if(fsError.length > 0)
     {
         let errorInfo = glProgram.__parseShaderError(fsError, this.__headerLines);
         error += this.__fragmentShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
-
-    } else if(!gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += this.__fragmentShaderName + " Error: linking failed\n";
+    }
+        
+    if(error.length < 1 && !gl.getProgramParameter(this.__programID, gl.LINK_STATUS)) error += this.__fragmentShaderName + " Error: linking failed\n";
 
     return error;
 }

@@ -8,10 +8,6 @@ uniform mat4 glModelViewProjectionMatrix;
 uniform vec3 lightVector;
 uniform mat4 shadowMatrix;
 
-in vec3 glVertex;
-in vec3 glNormal;
-in vec2 glTexCoord;
-
 out vec2 texCoords;  
 out vec3 shadowCoords;
 out vec3 normalEyeSpace;

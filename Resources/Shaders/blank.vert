@@ -1,6 +1,5 @@
 #version 300 es
 
-in vec3 glVertex;
 uniform mat4 glModelViewProjectionMatrix;
 
 void main() {      

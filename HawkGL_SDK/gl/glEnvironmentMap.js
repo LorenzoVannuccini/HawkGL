@@ -60,68 +60,65 @@ glEnvironmentMap.__genEnvMappingProgram = function(ctx)
     let program = glEnvironmentMap.__envMappingProgramInstances.get(ctx);
     if(program == null) 
     {
-        program = new glProgram(ctx,"#version 300 es                            \n" +
-                                    "precision highp float;                     \n" +
-                                    "                                           \n" +
-                                    "in vec3 glVertex;                          \n" +
-                                    "in vec2 glTexCoord;                        \n" +
-                                    "                                           \n" +
-                                    "out vec2 texCoords;                        \n" +
-                                    "                                           \n" +
-                                    "void main()                                \n" +
-                                    "{                                          \n" +
-                                    "    texCoords = glTexCoord;                \n" +
-                                    "    gl_Position = vec4(glVertex.xyz, 1.0); \n" +
-                                    "}                                          \n",
-                                    
-                                    "#version 300 es                                                                                                                \n" +
-                                    "precision mediump float;                                                                                                       \n" +
-                                    "                                                                                                                               \n" +
-                                    "uniform mat3 glNormalMatrix;                                                                                                   \n" +
-                                    "uniform mat4 glProjectionMatrix;                                                                                               \n" +
-                                    "                                                                                                                               \n" +
-                                    "uniform mediump sampler2D skyMap;                                                                                              \n" +
-                                    "uniform mediump sampler2D patchMap;                                                                                            \n" +
-                                    "                                                                                                                               \n" +
-                                    "uniform float skyMapIntensity;                                                                                                 \n" +
-                                    "                                                                                                                               \n" +
-                                    "in vec2 texCoords;                                                                                                             \n" +
-                                    "                                                                                                                               \n" +
-                                    "layout(location = 0) out mediump vec4 renderTargetColor;                                                                       \n" +
-                                    "                                                                                                                               \n" +
-                                    "const float PI        = 3.1415926535897932384626433832795028841971693993751058209749;                                          \n" +
-                                    "const float PI_2      = PI * 2.0;                                                                                              \n" +
-                                    "const float PI_OVER_2 = PI * 0.5;                                                                                              \n" +
-                                    "                                                                                                                               \n" +
-                                    "vec2 polarToUV(in vec3 n)                                                                                                      \n" +
-                                    "{                                                                                                                              \n" +
-                                    "    n = normalize(n);                                                                                                          \n" +
-                                    "    return vec2((atan(n.z, -n.x) + PI_OVER_2) / PI_2 + PI * (28.670 / 360.0), acos(-n.y) / PI);                                \n" +
-                                    "}                                                                                                                              \n" +
-                                    "                                                                                                                               \n" +
-                                    "vec3 uvToPolar(in vec2 uv)                                                                                                     \n" +
-                                    "{                                                                                                                              \n" +
-                                    "    uv = uv;                                                                                                                   \n" +
-                                    "                                                                                                                               \n" +
-                                    "    float phi   = PI * uv.y;                                                                                                   \n" +
-                                    "    float theta = PI_2 * uv.x - PI_OVER_2;                                                                                     \n" +
-                                    "                                                                                                                               \n" +
-                                    "    float sinPhi = sin(phi);                                                                                                   \n" +
-                                    "                                                                                                                               \n" +
-                                    "    return normalize(vec3(-sin(theta) * sinPhi, -cos(phi), -cos(theta) * sinPhi));                                             \n" +
-                                    "}                                                                                                                              \n" +
-                                    "                                                                                                                               \n" +
-                                    "void main()                                                                                                                    \n" +
-                                    "{                                                                                                                              \n" +
-                                    "    vec4 patchUV = (glProjectionMatrix * mat4(glNormalMatrix)) * vec4(uvToPolar(texCoords), 1.0);                              \n" +
-                                    "    patchUV.xyz = vec3(0.5) + 0.5 * (patchUV.xyz / patchUV.w);                                                                 \n" +
-                                    "                                                                                                                               \n" +
-                                    "    vec3 edge = abs(vec3(0.5) - patchUV.xyz);                                                                                  \n" +
-                                    "    if(max(edge.x, max(edge.y, edge.z)) > 0.5) discard;                                                                        \n" +
-                                    "                                                                                                                               \n" +
-                                    "    renderTargetColor = texture(patchMap, patchUV.xy);                                                                         \n" +
-                                    "    renderTargetColor.rgb = mix(texture(skyMap, texCoords).rgb * skyMapIntensity, renderTargetColor.rgb, renderTargetColor.a); \n" +
-                                    "}                                                                                                                              \n");
+        program = new glProgram(ctx, "#version 300 es                            \n" +
+                                     "precision highp float;                     \n" +
+                                     "                                           \n" +
+                                     "out vec2 texCoords;                        \n" +
+                                     "                                           \n" +
+                                     "void main()                                \n" +
+                                     "{                                          \n" +
+                                     "    texCoords = glTexCoord;                \n" +
+                                     "    gl_Position = vec4(glVertex.xyz, 1.0); \n" +
+                                     "}                                          \n",
+                                     
+                                     "#version 300 es                                                                                                                \n" +
+                                     "precision mediump float;                                                                                                       \n" +
+                                     "                                                                                                                               \n" +
+                                     "uniform mat3 glNormalMatrix;                                                                                                   \n" +
+                                     "uniform mat4 glProjectionMatrix;                                                                                               \n" +
+                                     "                                                                                                                               \n" +
+                                     "uniform mediump sampler2D skyMap;                                                                                              \n" +
+                                     "uniform mediump sampler2D patchMap;                                                                                            \n" +
+                                     "                                                                                                                               \n" +
+                                     "uniform float skyMapIntensity;                                                                                                 \n" +
+                                     "                                                                                                                               \n" +
+                                     "in vec2 texCoords;                                                                                                             \n" +
+                                     "                                                                                                                               \n" +
+                                     "layout(location = 0) out mediump vec4 renderTargetColor;                                                                       \n" +
+                                     "                                                                                                                               \n" +
+                                     "const float PI        = 3.1415926535897932384626433832795028841971693993751058209749;                                          \n" +
+                                     "const float PI_2      = PI * 2.0;                                                                                              \n" +
+                                     "const float PI_OVER_2 = PI * 0.5;                                                                                              \n" +
+                                     "                                                                                                                               \n" +
+                                     "vec2 polarToUV(in vec3 n)                                                                                                      \n" +
+                                     "{                                                                                                                              \n" +
+                                     "    n = normalize(n);                                                                                                          \n" +
+                                     "    return vec2((atan(n.z, -n.x) + PI_OVER_2) / PI_2 + PI * (28.670 / 360.0), acos(-n.y) / PI);                                \n" +
+                                     "}                                                                                                                              \n" +
+                                     "                                                                                                                               \n" +
+                                     "vec3 uvToPolar(in vec2 uv)                                                                                                     \n" +
+                                     "{                                                                                                                              \n" +
+                                     "    uv = uv;                                                                                                                   \n" +
+                                     "                                                                                                                               \n" +
+                                     "    float phi   = PI * uv.y;                                                                                                   \n" +
+                                     "    float theta = PI_2 * uv.x - PI_OVER_2;                                                                                     \n" +
+                                     "                                                                                                                               \n" +
+                                     "    float sinPhi = sin(phi);                                                                                                   \n" +
+                                     "                                                                                                                               \n" +
+                                     "    return normalize(vec3(-sin(theta) * sinPhi, -cos(phi), -cos(theta) * sinPhi));                                             \n" +
+                                     "}                                                                                                                              \n" +
+                                     "                                                                                                                               \n" +
+                                     "void main()                                                                                                                    \n" +
+                                     "{                                                                                                                              \n" +
+                                     "    vec4 patchUV = (glProjectionMatrix * mat4(glNormalMatrix)) * vec4(uvToPolar(texCoords), 1.0);                              \n" +
+                                     "    patchUV.xyz = vec3(0.5) + 0.5 * (patchUV.xyz / patchUV.w);                                                                 \n" +
+                                     "                                                                                                                               \n" +
+                                     "    vec3 edge = abs(vec3(0.5) - patchUV.xyz);                                                                                  \n" +
+                                     "    if(max(edge.x, max(edge.y, edge.z)) > 0.5) discard;                                                                        \n" +
+                                     "                                                                                                                               \n" +
+                                     "    renderTargetColor = texture(patchMap, patchUV.xy);                                                                         \n" +
+                                     "    renderTargetColor.rgb = mix(texture(skyMap, texCoords).rgb * skyMapIntensity, renderTargetColor.rgb, renderTargetColor.a); \n" +
+                                     "}                                                                                                                              \n");
 
         program.compile();
         program.createUniformSampler("skyMap",          0);

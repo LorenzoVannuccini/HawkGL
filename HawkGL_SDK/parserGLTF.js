@@ -477,7 +477,7 @@ gltfAnimation.prototype.__update = function(time)
             node.globalTransform = new glMatrix4x4f(nodeTransform);
 
             let isMeshNode = (node.mesh != null && node.mesh.triangulated);
-            if(isMeshNode && node.animated) self.__animator.__animationMatrices[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
+            if(isMeshNode && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
             
             if(node.skinned)
             {
@@ -491,7 +491,7 @@ gltfAnimation.prototype.__update = function(time)
                     let jointNode = joints[i];
 
                     let tmpMat4 = glMatrix4x4f.mul(nodes[jointNode.nodeID].globalTransform, skin.inverseBindMatrix[i]);
-                    self.__animator.__bonesMatrices[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
+                    self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
 
                     // if (skin.skeleton !== null) {
                     //     mat4.mul(tmpMat4, inverseSkeletonRootMat4, tmpMat4);
@@ -501,7 +501,7 @@ gltfAnimation.prototype.__update = function(time)
 
             for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(nodes, node.children[i], glMatrix4x4f.mul(nodeTransform, node.children[i].matrix));
         }
-
+        
         for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
         {
             for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
@@ -524,10 +524,14 @@ let glTFAnimator = function(glTF)
     this.__activeAnimation  = null;
     this.__onFinishCallback = null;
     
-    this.__animationMatrices = [];
-    this.__bonesMatrices = [];
+    this.__animationMatricesCurrentFrame = [];
+    this.__animationMatricesLastFrame = [];
+    this.__bonesMatricesCurrentFrame = [];
+    this.__bonesMatricesLastFrame = [];
     this.__paused = false;
     this.__time   = 0.0;
+
+    this.__shouldUpdateContext = false;
 
     for(let i = 0, e = glTF.animations.length; i != e; ++i) this.__createAnimation(glTF.animations[i]);
 } 
@@ -608,7 +612,15 @@ glTFAnimator.prototype.update = function(dt)
             shouldStop = true;
         }
 
+        this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame.slice(0);
+        this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame.slice(0);
+        
         this.__activeAnimation.__update(animationTime);
+
+        if(this.__animationMatricesLastFrame.length < 1) this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame;
+        if(this.__bonesMatricesLastFrame.length     < 1) this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame;
+
+        this.__shouldUpdateContext = true;
 
         if(shouldStop)
         {
@@ -618,12 +630,35 @@ glTFAnimator.prototype.update = function(dt)
     }
 }
 
-glTFAnimator.prototype.getAnimationMatrices = function() {
-    return this.__animationMatrices;
+glTFAnimator.prototype.__updateContextAnimationMatrices = function()
+{
+    if(this.__shouldUpdateContext)
+    {
+        this.__ctx.__standardUniformsBlock.glAnimationMatricesCurrentFrame.set(this.__animationMatricesCurrentFrame);
+        this.__ctx.__standardUniformsBlock.glAnimationMatricesLastFrame.set(this.__animationMatricesLastFrame);
+        this.__ctx.__standardUniformsBlock.glBonesMatricesCurrentFrame.set(this.__bonesMatricesCurrentFrame);
+        this.__ctx.__standardUniformsBlock.glBonesMatricesLastFrame.set(this.__bonesMatricesLastFrame);
+        
+        this.__shouldUpdateContext = false;
+    }
+}
+
+glTFAnimator.prototype.getAnimationMatrices = function(){
+    return this.__animationMatricesCurrentFrame;
 }
 
 glTFAnimator.prototype.getBonesMatrices = function() {
-    return this.__bonesMatrices;
+    return this.__bonesMatricesCurrentFrame;
+}
+
+glTFAnimator.prototype.bind = function()
+{
+    if(!this.__ctx.isAnimatorBound(this)) this.__shouldUpdateContext = true;
+    this.__ctx.bindAnimator(this);
+}
+
+glTFAnimator.prototype.unbind = function() {
+    if(this.__ctx.isAnimatorBound(this)) this.__ctx.unbindAnimator();
 }
 
 glTFAnimator.prototype.playing = function() {
@@ -652,7 +687,7 @@ glTFAnimator.prototype.size = function() {
     return this.__animations.size;
 }
 
-MinimalGLTFLoader.glTFModel = function (json)
+MinimalGLTFLoader.glTFModel = function(json)
 {
     this.json = json;
     this.defaultScene = json.scene !== undefined ? json.scene : 0;

@@ -289,30 +289,28 @@ glCinematicCamera.__genProgram = function(ctx)
     let program = glCinematicCamera.__programInstances.get(ctx);
     if(program == null) 
     {
-        program = new glProgram(ctx,"#version 300 es                                                            \n" +
-                                    "precision highp float;                                                     \n" +
-                                    "                                                                           \n" +
-                                    "uniform mat4 glModelViewProjectionMatrix;                                  \n" +
-                                    "uniform float pointSize;                                                   \n" +
-                                    "                                                                           \n" +
-                                    "in vec3 glVertex;                                                          \n" +
-                                    "                                                                           \n" +
-                                    "void main()                                                                \n" +
-                                    "{                                                                          \n" +
-                                    "    gl_PointSize = pointSize;                                              \n" +
-                                    "    gl_Position = (glModelViewProjectionMatrix * vec4(glVertex.xyz, 1.0)); \n" +
-                                    "}                                                                          \n",
-                                    
-                                    "#version 300 es                               \n" +
-                                    "precision mediump float;                      \n" +
-                                    "                                              \n" +
-                                    "uniform vec4 color;                           \n" +
-                                    "                                              \n" +
-                                    "layout(location = 0) out lowp vec4 fragColor; \n" +
-                                    "                                              \n" +
-                                    "void main() {                                 \n" +
-                                    "    fragColor = color;                        \n" +
-                                    "}                                             \n");
+        program = new glProgram(ctx, "#version 300 es                                                            \n" +
+                                     "precision highp float;                                                     \n" +
+                                     "                                                                           \n" +
+                                     "uniform mat4 glModelViewProjectionMatrix;                                  \n" +
+                                     "uniform float pointSize;                                                   \n" +
+                                     "                                                                           \n" +
+                                     "void main()                                                                \n" +
+                                     "{                                                                          \n" +
+                                     "    gl_PointSize = pointSize;                                              \n" +
+                                     "    gl_Position = (glModelViewProjectionMatrix * vec4(glVertex.xyz, 1.0)); \n" +
+                                     "}                                                                          \n",
+                                     
+                                     "#version 300 es                               \n" +
+                                     "precision mediump float;                      \n" +
+                                     "                                              \n" +
+                                     "uniform vec4 color;                           \n" +
+                                     "                                              \n" +
+                                     "layout(location = 0) out lowp vec4 fragColor; \n" +
+                                     "                                              \n" +
+                                     "void main() {                                 \n" +
+                                     "    fragColor = color;                        \n" +
+                                     "}                                             \n");
 
         program.compile();
         program.createUniformFloat("pointSize", 8.0);

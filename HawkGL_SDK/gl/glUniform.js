@@ -29,12 +29,12 @@ let glUniform = function(ctx, program, name, arrayTypeConstructor, nComponents)
     this.__size = nComponents;
     
     this.__program = program;
-    this.bindUniformLocation();
+    this.__bindUniformLocation();
 
-    this.__clientData = new arrayTypeConstructor(new Array(this.__size));
+    this.__clientData = new arrayTypeConstructor(this.__size);
     this.__clientData.fill(0.0);
 
-    this.__gpuData = new arrayTypeConstructor(new Array(this.__size));
+    this.__gpuData = new arrayTypeConstructor(this.__size);
     this.__gpuData.fill(0.0);
 
     this.__upToDate = true;
@@ -44,7 +44,10 @@ glUniform.prototype.__shouldUpdate = function()
 {
     if(!this.__upToDate && (this.__locationID != null)) 
     {
-        for(let i = 0; i != this.__size; ++i) if(this.__clientData[i] != this.__gpuData[i]) return true;
+        let size = this.__clientData.length;
+        if(size > this.__ctx.__uniformsUpdateCheckMaxComponents) return true;
+        
+        for(let i = 0; i != size; ++i) if(this.__clientData[i] != this.__gpuData[i]) return true;
         this.__upToDate = true;
     }
 
@@ -59,7 +62,7 @@ glUniform.prototype.__setClientData = function(newClientData)
     this.__upToDate = false; 
 }
 
-glUniform.prototype.bindUniformLocation = function() {
+glUniform.prototype.__bindUniformLocation = function() {
     if(this.__program.ready()) this.__locationID = this.__program.__getUniformLocation(this.__name);
 }
 
@@ -94,6 +97,32 @@ glUniformArray.prototype.set = function(array) {
 
 glUniformArray.prototype.get = function() {
     return this.__clientData.slice(0);
+}
+
+// -------------------------------------------------------------------------------------------
+
+let glUniformBlockIndex = function(ctx, program, name, value)
+{
+    glUniform.call(this, ctx, program, name, Int32Array, 1);    
+    if(value != null) this.set(value);
+}
+
+glUniformBlockIndex.prototype = Object.create(glUniform.prototype);
+
+glUniformBlockIndex.prototype.__bindUniformLocation = function() {
+    if(this.__program.ready()) this.__locationID = this.__program.__getUniformBlockLocation(this.__name);
+}
+
+glUniformBlockIndex.prototype.set = function(value) {
+    this.__setClientData([value]);
+}
+
+glUniformBlockIndex.prototype.get = function() {
+    return this.__clientData[0];
+}
+
+glUniformBlockIndex.prototype.__sendToGPU = function() {
+    this.__ctx.uniformBlockBinding(this.__program.getProgramID(), this.__locationID, this.__clientData[0]);
 }
 
 // -------------------------------------------------------------------------------------------
@@ -319,6 +348,13 @@ let glUniformArrayInt = function(ctx, program, name, size, array) {
 
 glUniformArrayInt.prototype = Object.create(glUniformArray.prototype);
 
+
+glUniformArrayInt.prototype.set = function(array)
+{
+    this.__clientData = new Int32Array(array);
+    this.__setClientData(null);
+}
+
 glUniformArrayInt.prototype.__sendToGPU = function() {
     this.__ctx.uniform1iv(this.__locationID, this.__clientData);
 }
@@ -330,6 +366,12 @@ let glUniformArrayFloat = function(ctx, program, name, size, array) {
 }
 
 glUniformArrayFloat.prototype = Object.create(glUniformArray.prototype);
+
+glUniformArrayFloat.prototype.set = function(array)
+{
+    this.__clientData = new Float32Array(array);
+    this.__setClientData(null);
+}
 
 glUniformArrayFloat.prototype.__sendToGPU = function() {
     this.__ctx.uniform1fv(this.__locationID, this.__clientData);
@@ -349,7 +391,10 @@ glUniformArrayVec2.prototype.__sendToGPU = function() {
 
 glUniformArrayVec2.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 2);
+
+    for(let i = 0; i != size; ++i)
     {
         let v = array[i];
 
@@ -362,7 +407,7 @@ glUniformArrayVec2.prototype.set = function(array)
 
 glUniformArrayVec2.prototype.get = function()
 {
-    let nElements = this.__size / 2;
+    let nElements = this.__clientData.length / 2;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector2f(this.__clientData[i * 2 + 0], this.__clientData[i * 2 + 1]);
@@ -384,7 +429,10 @@ glUniformArrayVec3.prototype.__sendToGPU = function() {
 
 glUniformArrayVec3.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 3);
+
+    for(let i = 0; i != size; ++i)
     {
         let v = array[i];
 
@@ -398,7 +446,7 @@ glUniformArrayVec3.prototype.set = function(array)
 
 glUniformArrayVec3.prototype.get = function()
 {
-    let nElements = this.__size / 3;
+    let nElements = this.__clientData.length / 3;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector3f(this.__clientData[i * 3 + 0], this.__clientData[i * 3 + 1], this.__clientData[i * 3 + 2]);
@@ -420,7 +468,10 @@ glUniformArrayVec4.prototype.__sendToGPU = function() {
 
 glUniformArrayVec4.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 4);
+
+    for(let i = 0; i != size; ++i)
     {
         let v = array[i];
 
@@ -435,7 +486,7 @@ glUniformArrayVec4.prototype.set = function(array)
 
 glUniformArrayVec4.prototype.get = function()
 {
-    let nElements = this.__size / 4;
+    let nElements = this.__clientData.length / 4;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector4f(this.__clientData[i * 4 + 0], this.__clientData[i * 4 + 1], this.__clientData[i * 4 + 2], this.__clientData[i * 4 + 3]);
@@ -457,7 +508,10 @@ glUniformArrayMat2.prototype.__sendToGPU = function() {
 
 glUniformArrayMat2.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 4);
+
+    for(let i = 0; i != size; ++i)
     {
         let m = array[i].__m;
 
@@ -472,7 +526,7 @@ glUniformArrayMat2.prototype.set = function(array)
 
 glUniformArrayMat2.prototype.get = function()
 {
-    let nElements = this.__size / 4;
+    let nElements = this.__clientData.length / 4;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)
@@ -502,7 +556,10 @@ glUniformArrayMat3.prototype.__sendToGPU = function() {
 
 glUniformArrayMat3.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 9);
+
+    for(let i = 0; i != size; ++i)
     {
         let m = array[i].__m;
 
@@ -522,7 +579,7 @@ glUniformArrayMat3.prototype.set = function(array)
 
 glUniformArrayMat3.prototype.get = function()
 {
-    let nElements = this.__size / 9;
+    let nElements = this.__clientData.length / 9;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)
@@ -557,7 +614,10 @@ glUniformArrayMat4.prototype.__sendToGPU = function() {
 
 glUniformArrayMat4.prototype.set = function(array)
 {
-    for(let i = 0, e = array.length; i != e; ++i)
+    let size = array.length;
+    this.__clientData = new Float32Array(size * 16);
+
+    for(let i = 0; i != size; ++i)
     {
         let m = array[i].__m;
 
@@ -584,7 +644,7 @@ glUniformArrayMat4.prototype.set = function(array)
 
 glUniformArrayMat4.prototype.get = function()
 {
-    let nElements = this.__size / 16;
+    let nElements = this.__clientData.length / 16;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)

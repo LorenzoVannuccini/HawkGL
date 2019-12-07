@@ -85,6 +85,7 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("gl/glPrimitive.js");
     includeScriptSDK("gl/glMesh.js");
     includeScriptSDK("gl/glUniform.js");
+    includeScriptSDK("gl/glUniformBlock.js");
     includeScriptSDK("gl/glProgram.js");
     includeScriptSDK("gl/glTexture.js");
     includeScriptSDK("gl/glFramebuffer.js");
