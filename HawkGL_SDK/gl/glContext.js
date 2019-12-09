@@ -231,8 +231,10 @@ let glContext = function(canvasID)
                                      "    return _glAnimationNormalLastFrame;                                                                                                    \n" +
                                      "}                                                                                                                                          \n" +
                                      "                                                                                                                                           \n" +
-                                     "#define glVertex glGetCurrentFrameAnimatedVertex()                                                                                         \n" +
-                                     "#define glNormal glGetCurrentFrameAnimatedNormal()                                                                                         \n" +
+                                     "#define glAnimatedVertex          glGetCurrentFrameAnimatedVertex()                                                                        \n" +
+                                     "#define glAnimatedNormal          glGetCurrentFrameAnimatedNormal()                                                                        \n" +
+                                     "#define glLastFrameAnimatedVertex glGetLastFrameAnimatedVertex()                                                                           \n" +
+                                     "#define glLastFrameAnimatedNormal glGetLastFrameAnimatedNormal()                                                                           \n" +
                                      "                                                                                                                                           \n" +
                                      "#endif                                                                                                                                     \n");
 
