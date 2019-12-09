@@ -25,17 +25,18 @@ let glMatrix4x4f = function(matrix)
 {
     this.__is_glMatrix4x4f = true;
 
+    this.__m = new Float32Array([ 1.0, 0.0, 0.0, 0.0,
+                                  0.0, 1.0, 0.0, 0.0,
+                                  0.0, 0.0, 1.0, 0.0,
+                                  0.0, 0.0, 0.0, 1.0 ]);
+
     if(matrix != null) this.set(matrix);
-    else this.__m = new Float32Array([1.0, 0.0, 0.0, 0.0,
-                                      0.0, 1.0, 0.0, 0.0,
-                                      0.0, 0.0, 1.0, 0.0,
-                                      0.0, 0.0, 0.0, 1.0]);
 }
 
 glMatrix4x4f.__PiOver180 = (Math.PI / 180.0);
 
 glMatrix4x4f.prototype.set = function(matrix) {
-    this.__m = new Float32Array(((matrix.__is_glMatrix4x4f) ? matrix.__m : matrix));
+    this.__m.set(((matrix.__is_glMatrix4x4f) ? matrix.__m : matrix));
 }
 
 glMatrix4x4f.prototype.setIdentity = function()
