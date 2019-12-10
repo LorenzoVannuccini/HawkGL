@@ -351,7 +351,7 @@ glUniformArrayInt.prototype = Object.create(glUniformArray.prototype);
 
 glUniformArrayInt.prototype.set = function(array)
 {
-    this.__clientData = new Int32Array(array);
+    this.__clientData.set(array);
     this.__setClientData(null);
 }
 
@@ -369,7 +369,7 @@ glUniformArrayFloat.prototype = Object.create(glUniformArray.prototype);
 
 glUniformArrayFloat.prototype.set = function(array)
 {
-    this.__clientData = new Float32Array(array);
+    this.__clientData.set(array);
     this.__setClientData(null);
 }
 
@@ -391,10 +391,7 @@ glUniformArrayVec2.prototype.__sendToGPU = function() {
 
 glUniformArrayVec2.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 2);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let v = array[i];
 
@@ -429,10 +426,7 @@ glUniformArrayVec3.prototype.__sendToGPU = function() {
 
 glUniformArrayVec3.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 3);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let v = array[i];
 
@@ -468,10 +462,7 @@ glUniformArrayVec4.prototype.__sendToGPU = function() {
 
 glUniformArrayVec4.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 4);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let v = array[i];
 
@@ -508,10 +499,7 @@ glUniformArrayMat2.prototype.__sendToGPU = function() {
 
 glUniformArrayMat2.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 4);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let m = array[i].__m;
 
@@ -556,10 +544,7 @@ glUniformArrayMat3.prototype.__sendToGPU = function() {
 
 glUniformArrayMat3.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 9);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let m = array[i].__m;
 
@@ -614,10 +599,7 @@ glUniformArrayMat4.prototype.__sendToGPU = function() {
 
 glUniformArrayMat4.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 16);
-
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != this.__size; ++i)
     {
         let m = array[i].__m;
 
