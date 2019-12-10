@@ -37,32 +37,32 @@ let glUniformBlock = function(ctx, name)
 
 glUniformBlock.Precision = Object.freeze({"LOWP":"lowp", "MEDIUMP":"mediump", "HIGHP":"highp"});
 
-glUniformBlock.__std140ArrayInt16 = function(data)
+glUniformBlock.__std140ArrayInt16 = function(data, length)
 {
-    let len = data.length;
-    let buffer = new Int16Array(len * 8);
+    if(length == null) length = data.length;
+    let buffer = new Int16Array(length * 8);
 
-    for(let i = 0; i != len; ++i) buffer[i * 8] = data[i];
+    for(let i = 0; i != length; ++i) buffer[i * 8] = data[i];
 
     return buffer;
 }
 
-glUniformBlock.__std140ArrayInt32 = function(data)
+glUniformBlock.__std140ArrayInt32 = function(data, length)
 {
-    let len = data.length;
-    let buffer = new Int32Array(len * 4);
+    if(length == null) length = data.length;
+    let buffer = new Int32Array(length * 4);
 
-    for(let i = 0; i != len; ++i) buffer[i * 4] = data[i];
+    for(let i = 0; i != length; ++i) buffer[i * 4] = data[i];
 
     return buffer;
 }
 
-glUniformBlock.__std140ArrayVec2 = function(data)
+glUniformBlock.__std140ArrayVec2 = function(data, length)
 {
-    let len = data.length;
-    let buffer = new Float32Array(len * 2);
+    if(length == null) length = data.length;
+    let buffer = new Float32Array(length * 2);
 
-    for(let i = 0; i < len; i += 2)
+    for(let i = 0; i < length; i += 2)
     {
         buffer[i * 2 + 0] = data[i + 0];
         buffer[i * 2 + 1] = data[i + 1];
@@ -71,12 +71,12 @@ glUniformBlock.__std140ArrayVec2 = function(data)
     return buffer;
 }
 
-glUniformBlock.__std140ArrayVec3 = function(data)
+glUniformBlock.__std140ArrayVec3 = function(data, length)
 {
-    let len = data.length;
-    let buffer = new Float32Array(Math.floor(len + len / 3));
+    if(length == null) length = data.length;
+    let buffer = new Float32Array(Math.floor(length + length / 3));
     
-    for(let i = 0, k = 0; i < len; i += 3, k += 4)
+    for(let i = 0, k = 0; i < length; i += 3, k += 4)
     {
         buffer[k + 0] = data[i + 0];
         buffer[k + 1] = data[i + 1];
@@ -86,12 +86,12 @@ glUniformBlock.__std140ArrayVec3 = function(data)
     return buffer;
 }
 
-glUniformBlock.__std140ArrayFloat = function(data)
+glUniformBlock.__std140ArrayFloat = function(data, length)
 {
-    let len = data.length;
-    let buffer = new Float32Array(len * 4);
+    if(length == null) length = data.length;
+    let buffer = new Float32Array(length * 4);
 
-    for(let i = 0; i != len; ++i) buffer[i * 4] = data[i];
+    for(let i = 0; i != length; ++i) buffer[i * 4] = data[i];
 
     return buffer;
 }
@@ -409,7 +409,11 @@ glUniformBlock.UniformArray.prototype.set = function(array) {
 }
 
 glUniformBlock.UniformArray.prototype.get = function() {
-    return this.__clientData.slice(0);
+    return this.__clientData.slice(0, this.__size);
+}
+
+glUniformBlock.Uniform.prototype.__sendToGPU = function(gl) {
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, this.__clientData, 0, this.__size);
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -613,12 +617,14 @@ glUniformBlock.UniformArrayInt.prototype = Object.create(glUniformBlock.UniformA
 
 glUniformBlock.UniformArrayInt.prototype.set = function(array)
 {
-    this.__clientData = new Int32Array(array);
+    this.__size = array.length;
+    this.__clientData.set(array);
+
     this.__setClientData(null);
 }
 
 glUniformBlock.UniformArrayInt.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayInt32(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayInt32(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -631,12 +637,14 @@ glUniformBlock.UniformArrayFloat.prototype = Object.create(glUniformBlock.Unifor
 
 glUniformBlock.UniformArrayFloat.prototype.set = function(array)
 {
-    this.__clientData = new Float32Array(array);
+    this.__size = array.length;
+    this.__clientData.set(array);
+
     this.__setClientData(null);
 }
 
 glUniformBlock.UniformArrayFloat.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayFloat(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayFloat(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -649,10 +657,11 @@ glUniformBlock.UniformArrayVec2.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayVec2.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 2);
-
-    for(let i = 0; i != size; ++i)
+    let len = array.length;
+    this.__size = len * 2;
+    this.__clientData.set(array);
+    
+    for(let i = 0; i != len; ++i)
     {
         let v = array[i];
 
@@ -665,7 +674,7 @@ glUniformBlock.UniformArrayVec2.prototype.set = function(array)
 
 glUniformBlock.UniformArrayVec2.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 2;
+    let nElements = this.__size / 2;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector2f(this.__clientData[i * 2 + 0], this.__clientData[i * 2 + 1]);
@@ -687,10 +696,11 @@ glUniformBlock.UniformArrayVec3.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayVec3.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 3);
+    let len = array.length;
+    this.__size = len * 3;
+    this.__clientData.set(array);
     
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != len; ++i)
     {
         let v = array[i];
 
@@ -704,7 +714,7 @@ glUniformBlock.UniformArrayVec3.prototype.set = function(array)
 
 glUniformBlock.UniformArrayVec3.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 3;
+    let nElements = this.__size / 3;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector3f(this.__clientData[i * 3 + 0], this.__clientData[i * 3 + 1], this.__clientData[i * 3 + 2]);
@@ -713,7 +723,7 @@ glUniformBlock.UniformArrayVec3.prototype.get = function()
 }
 
 glUniformBlock.UniformArrayVec3.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -726,10 +736,11 @@ glUniformBlock.UniformArrayVec4.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayVec4.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 4);
+    let len = array.length;
+    this.__size = len * 4;
+    this.__clientData.set(array);
     
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != len; ++i)
     {
         let v = array[i];
 
@@ -744,7 +755,7 @@ glUniformBlock.UniformArrayVec4.prototype.set = function(array)
 
 glUniformBlock.UniformArrayVec4.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 4;
+    let nElements = this.__size / 4;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i) array[i] = new glVector4f(this.__clientData[i * 4 + 0], this.__clientData[i * 4 + 1], this.__clientData[i * 4 + 2], this.__clientData[i * 4 + 3]);
@@ -762,10 +773,11 @@ glUniformBlock.UniformArrayMat2.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayMat2.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 4);
-
-    for(let i = 0; i != size; ++i)
+    let len = array.length;
+    this.__size = len * 4;
+    this.__clientData.set(array);
+    
+    for(let i = 0; i != len; ++i)
     {
         let m = array[i].__m;
 
@@ -780,7 +792,7 @@ glUniformBlock.UniformArrayMat2.prototype.set = function(array)
 
 glUniformBlock.UniformArrayMat2.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 4;
+    let nElements = this.__size / 4;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)
@@ -797,7 +809,7 @@ glUniformBlock.UniformArrayMat2.prototype.get = function()
 }
 
 glUniformBlock.UniformArrayMat2.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -810,10 +822,11 @@ glUniformBlock.UniformArrayMat3.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayMat3.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 9);
-
-    for(let i = 0; i != size; ++i)
+    let len = array.length;
+    this.__size = len * 9;
+    this.__clientData.set(array);
+    
+    for(let i = 0; i != len; ++i)
     {
         let m = array[i].__m;
 
@@ -833,7 +846,7 @@ glUniformBlock.UniformArrayMat3.prototype.set = function(array)
 
 glUniformBlock.UniformArrayMat3.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 9;
+    let nElements = this.__size / 9;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)
@@ -855,7 +868,7 @@ glUniformBlock.UniformArrayMat3.prototype.get = function()
 }
 
 glUniformBlock.UniformArrayMat3.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -868,10 +881,11 @@ glUniformBlock.UniformArrayMat4.prototype = Object.create(glUniformBlock.Uniform
 
 glUniformBlock.UniformArrayMat4.prototype.set = function(array)
 {
-    let size = array.length;
-    this.__clientData = new Float32Array(size * 16);
+    let len = array.length;
+    this.__size = len * 16;
+    this.__clientData.set(array);
     
-    for(let i = 0; i != size; ++i)
+    for(let i = 0; i != len; ++i)
     {
         let m = array[i].__m;
 
@@ -898,7 +912,7 @@ glUniformBlock.UniformArrayMat4.prototype.set = function(array)
 
 glUniformBlock.UniformArrayMat4.prototype.get = function()
 {
-    let nElements = this.__clientData.length / 16;
+    let nElements = this.__size / 16;
     let array = new Array(nElements);
 
     for(let i = 0; i != nElements; ++i)
