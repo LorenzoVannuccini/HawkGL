@@ -348,13 +348,6 @@ let glUniformArrayInt = function(ctx, program, name, size, array) {
 
 glUniformArrayInt.prototype = Object.create(glUniformArray.prototype);
 
-
-glUniformArrayInt.prototype.set = function(array)
-{
-    this.__clientData.set(array);
-    this.__setClientData(null);
-}
-
 glUniformArrayInt.prototype.__sendToGPU = function() {
     this.__ctx.uniform1iv(this.__locationID, this.__clientData);
 }
@@ -366,12 +359,6 @@ let glUniformArrayFloat = function(ctx, program, name, size, array) {
 }
 
 glUniformArrayFloat.prototype = Object.create(glUniformArray.prototype);
-
-glUniformArrayFloat.prototype.set = function(array)
-{
-    this.__clientData.set(array);
-    this.__setClientData(null);
-}
 
 glUniformArrayFloat.prototype.__sendToGPU = function() {
     this.__ctx.uniform1fv(this.__locationID, this.__clientData);

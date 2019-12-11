@@ -57,7 +57,7 @@ let glContext = function(canvasID)
     this.__modelViewProjectionMatrix = glMatrix4x4f.identityMatrix();
     this.__shouldUpdateModelViewProjectionMatrix = false;
 
-    this.__uniformsUpdateCheckMaxComponents = 32;
+    this.__uniformsUpdateCheckMaxComponents = 64;
     
     this.__modelViewMatrixStack = [];
     this.__activeUniformBlocks = [];
@@ -791,7 +791,9 @@ glContext.prototype.__updateProgramStandardUniforms = function(program)
     for(let i = 0, e = this.__standardUniforms.length; i != e; ++i)
     {
         let uniformInfo = this.__standardUniforms[i];
-        program.getUniform(uniformInfo.name).set(uniformInfo.onUpdate(this));
+        
+        let newValue = uniformInfo.onUpdate(this);
+        if(newValue != null) program.getUniform(uniformInfo.name).set(newValue);
     }
 
     this.updateActiveAnimator();
