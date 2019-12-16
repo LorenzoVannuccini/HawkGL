@@ -26,14 +26,14 @@ let glVertexBuffer = function(ctx, bufferData)
     this.__ctx = ctx;
     this.__shouldUpdate = true;
 
+    this.__bufferData = bufferData;
     this.__bufferID = this.__ctx.getGL().createBuffer();
-    this.__bufferData = ((bufferData != null) ? bufferData : []);
 }
 
 glVertexBuffer.prototype.__pushToGPU = function() // NB: assumes buffer is already bound
 {
     let gl = this.__ctx.getGL();
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.__bufferData), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, this.__bufferData, gl.STATIC_DRAW);
     
     this.__shouldUpdate = false;
 }

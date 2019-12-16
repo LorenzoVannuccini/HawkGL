@@ -45,15 +45,15 @@ glPrimitive.prototype.__bindStandardAttributes = function()
 
     let offset      = 0;
     let floatBytes  = 4;
-    let vertexBytes = glVertex.size() * floatBytes;
+    let vertexBytes = glVertex.sizeBytes();
 
-    gl.vertexAttribPointer(glContext.__positionAttribLocation,          3, gl.FLOAT, false, vertexBytes, offset); offset += 3 * floatBytes;
-    gl.vertexAttribPointer(glContext.__texCoordAttribLocation,          2, gl.FLOAT, false, vertexBytes, offset); offset += 2 * floatBytes;
-    gl.vertexAttribPointer(glContext.__normalAttribLocation,            3, gl.FLOAT, false, vertexBytes, offset); offset += 3 * floatBytes;
-    gl.vertexAttribPointer(glContext.__bonesIndicesAttribLocation,      4, gl.FLOAT, false, vertexBytes, offset); offset += 4 * floatBytes;
-    gl.vertexAttribPointer(glContext.__bonesWeightsAttribLocation,      4, gl.FLOAT, false, vertexBytes, offset); offset += 4 * floatBytes;
-    gl.vertexAttribPointer(glContext.__animationMatrixIDAttribLocation, 1, gl.FLOAT, false, vertexBytes, offset); offset += 1 * floatBytes;
-    
+    gl.vertexAttribPointer(glContext.__positionAttribLocation,           3, gl.FLOAT,         false, vertexBytes, offset); offset += 3 * floatBytes;
+    gl.vertexAttribPointer(glContext.__texCoordAttribLocation,           2, gl.FLOAT,         false, vertexBytes, offset); offset += 2 * floatBytes;
+    gl.vertexAttribPointer(glContext.__normalAttribLocation,             3, gl.FLOAT,         false, vertexBytes, offset); offset += 3 * floatBytes;
+    gl.vertexAttribPointer(glContext.__bonesWeightsAttribLocation,       4, gl.UNSIGNED_BYTE, true,  vertexBytes, offset); offset += 4;
+    gl.vertexAttribIPointer(glContext.__bonesIndicesAttribLocation,      4, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 4;
+    gl.vertexAttribIPointer(glContext.__animationMatrixIDAttribLocation, 1, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 1;
+
     gl.enableVertexAttribArray(glContext.__positionAttribLocation);
     gl.enableVertexAttribArray(glContext.__texCoordAttribLocation);
     gl.enableVertexAttribArray(glContext.__normalAttribLocation);
@@ -90,6 +90,16 @@ glPrimitive.prototype.__pushToGPU = function()
     this.__shouldUpdate = false;
 }
 
+glPrimitive.__appendArrayBuffers = function(buffer1, buffer2)
+{
+    var tmp = new Uint8Array(buffer1.byteLength + buffer2.byteLength);
+
+    tmp.set(new Uint8Array(buffer1), 0);
+    tmp.set(new Uint8Array(buffer2), buffer1.byteLength);
+
+    return tmp.buffer;
+};
+
 glPrimitive.prototype.__buildVertexData = function()
 {
     let vertexData =
@@ -108,12 +118,18 @@ glPrimitive.prototype.__buildVertexData = function()
         let vertexIndex = vertexMap.get(vertexHash);
         if(vertexIndex == null)
         {
+            vertexData.vbo.push(vertex);
             vertexMap.set(vertexHash, (vertexIndex = vertexMap.size));
-            vertexData.vbo.push.apply(vertexData.vbo, vertex.toFloatArray());
         }
-
+        
         vertexData.ibo.push(vertexIndex);
     }
+    
+    let vertices  = vertexData.vbo;
+    let nVertices = vertices.length;
+    
+    vertexData.vbo = new ArrayBuffer(nVertices * glVertex.sizeBytes());
+    for(let i = 0; i != nVertices; ++i) vertices[i].toArrayBuffer(vertexData.vbo, i * glVertex.sizeBytes());
     
     return vertexData;
 }

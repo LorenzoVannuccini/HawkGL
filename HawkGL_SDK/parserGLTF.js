@@ -893,14 +893,6 @@ glTFLoader.prototype._postprocess = function ()
                     vertex.normal.z = normalsBuffer[index * 3 + 2];
                 }
 
-                if(joints0Buffer != null)
-                {
-                    vertex.bonesIndices.x = joints0Buffer[index * 4 + 0];
-                    vertex.bonesIndices.y = joints0Buffer[index * 4 + 1];
-                    vertex.bonesIndices.z = joints0Buffer[index * 4 + 2];
-                    vertex.bonesIndices.w = joints0Buffer[index * 4 + 3];
-                }
-            
                 if(weights0Buffer != null)
                 {
                     vertex.bonesWeights.x = weights0Buffer[index * 4 + 0];
@@ -908,7 +900,15 @@ glTFLoader.prototype._postprocess = function ()
                     vertex.bonesWeights.z = weights0Buffer[index * 4 + 2];
                     vertex.bonesWeights.w = weights0Buffer[index * 4 + 3];
                 }
-
+                
+                if(joints0Buffer != null)
+                {
+                    vertex.bonesIndices[0] = joints0Buffer[index * 4 + 0];
+                    vertex.bonesIndices[1] = joints0Buffer[index * 4 + 1];
+                    vertex.bonesIndices[2] = joints0Buffer[index * 4 + 2];
+                    vertex.bonesIndices[3] = joints0Buffer[index * 4 + 3];
+                }
+            
                 primitive.vertices.push(vertex);
                 mesh.triangulated = true;
             }
@@ -1072,14 +1072,14 @@ glTFLoader.prototype._postprocess = function ()
                         let vertex = mesh.__vertices[i];
                         
                         let vertexHasAnimations = node.animated;
-                        let vertexHasSkinning = (node.skinned && vertex.bonesIndices.x >= 0);
+                        let vertexHasSkinning = (node.skinned && vertex.bonesIndices[0] >= 0);
 
                         if(vertexHasSkinning)
                         {
-                            vertex.bonesIndices.x += node.skin.baseMatrixID;
-                            vertex.bonesIndices.y += node.skin.baseMatrixID;
-                            vertex.bonesIndices.z += node.skin.baseMatrixID;
-                            vertex.bonesIndices.w += node.skin.baseMatrixID;
+                            vertex.bonesIndices[0] += node.skin.baseMatrixID;
+                            vertex.bonesIndices[1] += node.skin.baseMatrixID;
+                            vertex.bonesIndices[2] += node.skin.baseMatrixID;
+                            vertex.bonesIndices[3] += node.skin.baseMatrixID;
                         }
 
                         if(vertexHasAnimations) vertex.animationMatrixID = animationMatrixID;

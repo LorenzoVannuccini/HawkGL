@@ -28,12 +28,16 @@ let glVertex = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
     this.normal    = new glVector3f(nx, ny, nz);
     
     this.bonesWeights = new glVector4f(0.0);
-    this.bonesIndices = new glVector4f(-1);
+    this.bonesIndices = [-1, -1, -1, -1];
     this.animationMatrixID = -1;
 }
 
-glVertex.size = function() {
+glVertex.nComponents = function() {
     return 17;
+}
+
+glVertex.sizeBytes = function() {
+    return (41 + 3); // 3 padding bytes (total size must be a multiple of 4)
 }
 
 glVertex.clone = function(other)
@@ -44,15 +48,15 @@ glVertex.clone = function(other)
     vertex.texCoord          = new glVector2f(other.texCoord);
     vertex.normal            = new glVector3f(other.normal);
     vertex.bonesWeights      = new glVector4f(other.bonesWeights);
-    vertex.bonesIndices      = new glVector4f(other.bonesIndices);
+    vertex.bonesIndices      = other.bonesIndices.slice(0);
     vertex.animationMatrixID = other.animationMatrixID;
     
     return vertex;
 }
 
-glVertex.prototype.toFloatArray = function()
+glVertex.prototype.toFloat32Array = function()
 {
-    let rawData = new Array(glVertex.size());
+    let rawData = new Float32Array(glVertex.nComponents());
 
     rawData[0] = this.position.x;
     rawData[1] = this.position.y;
@@ -65,24 +69,59 @@ glVertex.prototype.toFloatArray = function()
     rawData[6] = this.normal.y;
     rawData[7] = this.normal.z;
 
-    rawData[8]  = this.bonesIndices.x;
-    rawData[9]  = this.bonesIndices.y;
-    rawData[10] = this.bonesIndices.z;
-    rawData[11] = this.bonesIndices.w;
+    rawData[8]  = this.bonesWeights.x;
+    rawData[9]  = this.bonesWeights.y;
+    rawData[10] = this.bonesWeights.z;
+    rawData[11] = this.bonesWeights.w;
 
-    rawData[12] = this.bonesWeights.x;
-    rawData[13] = this.bonesWeights.y;
-    rawData[14] = this.bonesWeights.z;
-    rawData[15] = this.bonesWeights.w;
+    rawData[12] = this.bonesIndices[0];
+    rawData[13] = this.bonesIndices[1];
+    rawData[14] = this.bonesIndices[2];
+    rawData[15] = this.bonesIndices[3];
 
     rawData[16] = this.animationMatrixID;
     
     return rawData;
 }
 
+glVertex.prototype.toArrayBuffer = function(buffer, byteOffset)
+{
+    if(buffer == null) buffer = new ArrayBuffer(glVertex.sizeBytes());
+    let view = new DataView(buffer, ((byteOffset != null) ? byteOffset : 0), glVertex.sizeBytes());
+
+    let offset = 0;
+
+    view.setFloat32(offset, this.position.x, true); offset += 4;
+    view.setFloat32(offset, this.position.y, true); offset += 4;
+    view.setFloat32(offset, this.position.z, true); offset += 4;
+
+    view.setFloat32(offset, this.texCoord.x, true); offset += 4;
+    view.setFloat32(offset, this.texCoord.y, true); offset += 4;
+
+    view.setFloat32(offset, this.normal.x, true); offset += 4;
+    view.setFloat32(offset, this.normal.y, true); offset += 4;
+    view.setFloat32(offset, this.normal.z, true); offset += 4;
+
+    let weightSum = (this.bonesWeights.x + this.bonesWeights.y + this.bonesWeights.z + this.bonesWeights.w);
+    
+    view.setUint8(offset, Math.round((this.bonesWeights.x / weightSum) * 255)); offset += 1;
+    view.setUint8(offset, Math.round((this.bonesWeights.y / weightSum) * 255)); offset += 1;
+    view.setUint8(offset, Math.round((this.bonesWeights.z / weightSum) * 255)); offset += 1;
+    view.setUint8(offset, Math.round((this.bonesWeights.w / weightSum) * 255)); offset += 1;
+    
+    view.setUint8(offset, this.bonesIndices[0], true); offset += 1;
+    view.setUint8(offset, this.bonesIndices[1], true); offset += 1;
+    view.setUint8(offset, this.bonesIndices[2], true); offset += 1;
+    view.setUint8(offset, this.bonesIndices[3], true); offset += 1;
+
+    view.setUint8(offset, this.animationMatrixID, true); offset += 1;
+
+    return buffer;
+}
+
 glVertex.prototype.toHash = function()
 {
-    let rawData = this.toFloatArray();
+    let rawData = this.toFloat32Array();
     for(let i = 0, e = rawData.length; i != e; ++i) rawData[i] = rawData[i].toPrecision(4);
 
     return rawData.toString();

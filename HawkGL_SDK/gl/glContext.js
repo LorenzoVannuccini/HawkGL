@@ -88,12 +88,12 @@ let glContext = function(canvasID)
 
     this.createShadingGlobalConstant("#ifdef GLES_VERTEX_SHADER                                                                                                                  \n" +
                                      "                                                                                                                                           \n" +
-                                     "in highp   vec3 glVertex;                                                                                                                  \n" +
-                                     "in highp   vec3 glNormal;                                                                                                                  \n" +
-                                     "in highp   vec2 glTexCoord;                                                                                                                \n" +
-                                     "in highp   vec4 glBonesWeights;                                                                                                            \n" +
-                                     "in mediump vec4 glBonesIndices;                                                                                                            \n" +
-                                     "in mediump vec4 glAnimationMatrixID;                                                                                                       \n" +
+                                     "in highp   vec3  glVertex;                                                                                                                  \n" +
+                                     "in highp   vec3  glNormal;                                                                                                                  \n" +
+                                     "in highp   vec2  glTexCoord;                                                                                                                \n" +
+                                     "in mediump vec4  glBonesWeights;                                                                                                            \n" +
+                                     "in mediump uvec4 glBonesIndices;                                                                                                            \n" +
+                                     "in mediump uint  glAnimationMatrixID;                                                                                                       \n" +
                                      "                                                                                                                                           \n" +
                                      "mat4 _glAnimationMatrixCurrentFrame = mat4(1.0);                                                                                           \n" +
                                      "bool _glAnimationMatrixCurrentFrame_isSet = false;                                                                                         \n" +
@@ -121,14 +121,14 @@ let glContext = function(canvasID)
                                      "    {                                                                                                                                      \n" +
                                      "        if(glIsAnimationActive)                                                                                                            \n" +
                                      "        {                                                                                                                                  \n" +
-                                     "            if(int(glAnimationMatrixID) >= 0) _glAnimationMatrixCurrentFrame *= glAnimationMatricesCurrentFrame[int(glAnimationMatrixID)]; \n" +
+                                     "            if(glAnimationMatrixID < 255u) _glAnimationMatrixCurrentFrame *= glAnimationMatricesCurrentFrame[glAnimationMatrixID]; \n" +
                                      "                                                                                                                                           \n" +
-                                     "            if(int(glBonesIndices.x) >= 0)                                                                                                 \n" +
+                                     "            if(glBonesIndices.x < 255u)                                                                                                 \n" +
                                      "            {                                                                                                                              \n" +
-                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesCurrentFrame[int(glBonesIndices.x)] +                                  \n" +
-                                     "                                  glBonesWeights.y * glBonesMatricesCurrentFrame[int(glBonesIndices.y)] +                                  \n" +
-                                     "                                  glBonesWeights.z * glBonesMatricesCurrentFrame[int(glBonesIndices.z)] +                                  \n" +
-                                     "                                  glBonesWeights.w * glBonesMatricesCurrentFrame[int(glBonesIndices.w)];                                   \n" +
+                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesCurrentFrame[glBonesIndices.x] +                                  \n" +
+                                     "                                  glBonesWeights.y * glBonesMatricesCurrentFrame[glBonesIndices.y] +                                  \n" +
+                                     "                                  glBonesWeights.z * glBonesMatricesCurrentFrame[glBonesIndices.z] +                                  \n" +
+                                     "                                  glBonesWeights.w * glBonesMatricesCurrentFrame[glBonesIndices.w];                                   \n" +
                                      "                                                                                                                                           \n" +
                                      "                _glAnimationMatrixCurrentFrame *= skinMatrix;                                                                              \n" +
                                      "            }                                                                                                                              \n" +
@@ -146,14 +146,14 @@ let glContext = function(canvasID)
                                      "    {                                                                                                                                      \n" +
                                      "        if(glIsAnimationActive)                                                                                                            \n" +
                                      "        {                                                                                                                                  \n" +
-                                     "            if(int(glAnimationMatrixID) >= 0) _glAnimationMatrixLastFrame *= glAnimationMatricesLastFrame[int(glAnimationMatrixID)];       \n" +
+                                     "            if(glAnimationMatrixID < 255u) _glAnimationMatrixLastFrame *= glAnimationMatricesLastFrame[glAnimationMatrixID];       \n" +
                                      "                                                                                                                                           \n" +
-                                     "            if(int(glBonesIndices.x) >= 0)                                                                                                 \n" +
+                                     "            if(glBonesIndices.x < 255u)                                                                                                 \n" +
                                      "            {                                                                                                                              \n" +
-                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesLastFrame[int(glBonesIndices.x)] +                                     \n" +
-                                     "                                  glBonesWeights.y * glBonesMatricesLastFrame[int(glBonesIndices.y)] +                                     \n" +
-                                     "                                  glBonesWeights.z * glBonesMatricesLastFrame[int(glBonesIndices.z)] +                                     \n" +
-                                     "                                  glBonesWeights.w * glBonesMatricesLastFrame[int(glBonesIndices.w)];                                      \n" +
+                                     "                mat4 skinMatrix = glBonesWeights.x * glBonesMatricesLastFrame[glBonesIndices.x] +                                     \n" +
+                                     "                                  glBonesWeights.y * glBonesMatricesLastFrame[glBonesIndices.y] +                                     \n" +
+                                     "                                  glBonesWeights.z * glBonesMatricesLastFrame[glBonesIndices.z] +                                     \n" +
+                                     "                                  glBonesWeights.w * glBonesMatricesLastFrame[glBonesIndices.w];                                      \n" +
                                      "                                                                                                                                           \n" +
                                      "                _glAnimationMatrixLastFrame *= skinMatrix;                                                                                 \n" +
                                      "            }                                                                                                                              \n" +
