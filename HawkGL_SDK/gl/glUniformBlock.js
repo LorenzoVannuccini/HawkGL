@@ -412,7 +412,7 @@ glUniformBlock.UniformArray.prototype.get = function() {
     return this.__clientData.slice(0, this.__size);
 }
 
-glUniformBlock.Uniform.prototype.__sendToGPU = function(gl) {
+glUniformBlock.UniformArray.prototype.__sendToGPU = function(gl) {
     gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, this.__clientData, 0, this.__size);
 }
 
