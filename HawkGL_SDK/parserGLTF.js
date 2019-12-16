@@ -472,8 +472,7 @@ gltfAnimation.prototype.__update = function(time)
     {
         node.globalTransform = new glMatrix4x4f(nodeTransform);
 
-        let isMeshNode = (node.mesh != null && node.mesh.triangulated);
-        if(isMeshNode && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
+        if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
         
         if(node.skinned)
         {
@@ -1049,8 +1048,8 @@ glTFLoader.prototype._postprocess = function ()
     {
         if(animated) node.animated = true;
         
-        let isMeshNode = (node.mesh != null && node.mesh.triangulated);
-        if(isMeshNode) 
+        node.hasMesh = (node.mesh != null && node.mesh.triangulated);
+        if(node.hasMesh)
         {
             for(let i = 0, e = node.mesh.primitives.length; i != e; ++i)
             {
@@ -1093,6 +1092,14 @@ glTFLoader.prototype._postprocess = function ()
             node.inverseBindMatrix = glMatrix4x4f.inverse(nodeTransform);
             if(node.animated) ++animationMatrixID;
         }
+        
+        node.mesh       = null;
+        node.extras     = null;
+        node.extensions = null;
+        
+        delete node.mesh; 
+        delete node.extras; 
+        delete node.extensions; 
         
         for(let i = 0, e = node.children.length; i != e; ++i) processNode(glTF, node.children[i], glMatrix4x4f.mul(nodeTransform, node.children[i].matrix), node.animated);
     }
