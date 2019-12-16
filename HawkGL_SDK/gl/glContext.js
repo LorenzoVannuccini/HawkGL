@@ -75,10 +75,10 @@ let glContext = function(canvasID)
 
     this.__standardUniformsBlock = new glUniformBlock(this, "glStandardUniformsBlock");
     this.__standardUniformsBlock.glIsAnimationActive             = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",                   glUniformBlock.Precision.LOWP);
-    this.__standardUniformsBlock.glAnimationMatricesCurrentFrame = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.HIGHP, 255);
-    this.__standardUniformsBlock.glAnimationMatricesLastFrame    = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.HIGHP, 255);
-    this.__standardUniformsBlock.glBonesMatricesCurrentFrame     = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.HIGHP, 255);
-    this.__standardUniformsBlock.glBonesMatricesLastFrame        = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.HIGHP, 255);
+    this.__standardUniformsBlock.glAnimationMatricesCurrentFrame = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 255);
+    this.__standardUniformsBlock.glAnimationMatricesLastFrame    = this.__standardUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 255);
+    this.__standardUniformsBlock.glBonesMatricesCurrentFrame     = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.MEDIUMP, 255);
+    this.__standardUniformsBlock.glBonesMatricesLastFrame        = this.__standardUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.MEDIUMP, 255);
     
     if(!this.__standardUniformsBlock.empty())
     {
@@ -89,11 +89,11 @@ let glContext = function(canvasID)
     this.createShadingGlobalConstant("#ifdef GLES_VERTEX_SHADER                                                                                                                  \n" +
                                      "                                                                                                                                           \n" +
                                      "in highp   vec3  glVertex;                                                                                                                  \n" +
-                                     "in highp   vec3  glNormal;                                                                                                                  \n" +
-                                     "in highp   vec2  glTexCoord;                                                                                                                \n" +
-                                     "in mediump vec4  glBonesWeights;                                                                                                            \n" +
-                                     "in mediump uvec4 glBonesIndices;                                                                                                            \n" +
-                                     "in mediump uint  glAnimationMatrixID;                                                                                                       \n" +
+                                     "in mediump vec3  glNormal;                                                                                                                  \n" +
+                                     "in mediump vec2  glTexCoord;                                                                                                                \n" +
+                                     "in lowp    vec4  glBonesWeights;                                                                                                            \n" +
+                                     "in lowp    uvec4 glBonesIndices;                                                                                                            \n" +
+                                     "in lowp    uint  glAnimationMatrixID;                                                                                                       \n" +
                                      "                                                                                                                                           \n" +
                                      "mat4 _glAnimationMatrixCurrentFrame = mat4(1.0);                                                                                           \n" +
                                      "bool _glAnimationMatrixCurrentFrame_isSet = false;                                                                                         \n" +
