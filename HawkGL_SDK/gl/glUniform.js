@@ -72,7 +72,7 @@ glUniform.prototype.update = function() // NB: assumes glProgram is bound
     {
         this.__sendToGPU();
 
-        this.__gpuData = this.__clientData.slice(0);
+        this.__gpuData.set(this.__clientData);
         this.__upToDate = true;
     }
 }

@@ -356,7 +356,7 @@ glUniformBlock.Uniform.prototype.__shouldUpdate = function()
 {
     if(!this.__upToDate && (this.__offset != null)) 
     {
-        let size = this.__clientData.length;
+        let size = this.__size;
         if(size > this.__uniformBlock.__ctx.__uniformsUpdateCheckMaxComponents) return true;
         
         for(let i = 0; i != size; ++i) if(this.__clientData[i] != this.__gpuData[i]) return true;
@@ -380,13 +380,13 @@ glUniformBlock.Uniform.prototype.update = function() // NB: assumes uniform buff
     {
         this.__sendToGPU(this.__uniformBlock.__ctx.getGL());
 
-        this.__gpuData = this.__clientData.slice(0);
+        this.__gpuData.set(this.__clientData.subarray(0, this.__size));
         this.__upToDate = true;
     }
 }
 
 glUniformBlock.Uniform.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, this.__clientData);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, this.__clientData, 0, this.__size);
 }
 
 glUniformBlock.Uniform.prototype.set = null; // abstract
@@ -410,10 +410,6 @@ glUniformBlock.UniformArray.prototype.set = function(array) {
 
 glUniformBlock.UniformArray.prototype.get = function() {
     return this.__clientData.slice(0, this.__size);
-}
-
-glUniformBlock.UniformArray.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, this.__clientData, 0, this.__size);
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -550,7 +546,7 @@ glUniformBlock.UniformMat2.prototype.get = function()
 }
 
 glUniformBlock.UniformMat2.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -586,7 +582,7 @@ glUniformBlock.UniformMat3.prototype.get = function()
 }
 
 glUniformBlock.UniformMat3.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec3(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -683,7 +679,7 @@ glUniformBlock.UniformArrayVec2.prototype.get = function()
 }
 
 glUniformBlock.UniformArrayVec2.prototype.__sendToGPU = function(gl) {
-    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData));
+    gl.bufferSubData(gl.UNIFORM_BUFFER, this.__offset, glUniformBlock.__std140ArrayVec2(this.__clientData, this.__size));
 }
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------------
