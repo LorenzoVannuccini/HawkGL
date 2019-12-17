@@ -431,7 +431,9 @@ let gltfAnimation = function(animator, animation)
     this.__animator  = animator;
     this.__animation = animation;
 
-    this.__time = 0.0;
+    this.__events = [];
+
+    this.__setTime(0.0);
 } 
 
 gltfAnimation.prototype.getName = function() {
@@ -442,10 +444,14 @@ gltfAnimation.prototype.getDuration = function() {
     return this.__animation.duration;
 }
 
-gltfAnimation.prototype.__update = function(time)
+gltfAnimation.prototype.__setTime = function(time) {
+    this.__time = this.__lastTime = time;
+}
+
+gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 {
     this.__time = Math.min(Math.max(time, 0.0), this.getDuration());
-
+    
     for(let i = 0, e = this.__animation.samplers.length; i != e; ++i) this.__animation.samplers[i].getValue(this.__time);
 
     for(let i = 0, e = this.__animation.channels.length; i != e; ++i)
@@ -503,6 +509,74 @@ gltfAnimation.prototype.__update = function(time)
             updateAnimationMatrices(this.__animator.__nodes, nodes[k], nodes[k].matrix);
         }
     }
+
+    if(shouldUpdateAnimationEvents) this.__updateEvents();
+}
+
+gltfAnimation.prototype.__updateEvents = function()
+{
+    let currentTime = this.__time;
+    let lastTime = this.__lastTime;
+
+    this.__lastTime = this.__time;
+
+    if(currentTime < lastTime) 
+    {
+        let tmp = currentTime;
+
+        currentTime = lastTime;
+        lastTime = tmp;
+    }
+
+    for(let i = 0, e = this.__events.length; i != e; ++i)
+    {
+        let event = this.__events[i];
+        if(lastTime <= event.__timeEnd && currentTime >= event.__timeStart)
+        {
+            let t = Math.min(Math.max((this.__time - event.__timeStart) / (event.__timeEnd - event.__timeStart), 0.0), 1.0);
+            event.__callback(t);
+        }
+    }
+}
+
+gltfAnimation.prototype.createTimeRangeEvent = function(timeStart, timeEnd, callback)
+{
+    if(timeEnd < timeStart) 
+    {
+        let tmp = timeStart;
+
+        timeStart = timeEnd;
+        timeEnd = tmp;
+    }
+
+    let event =
+    {
+        __timeStart: timeStart,
+        __timeEnd: timeEnd,
+
+        __callback: callback
+    };
+
+    this.__events.push(event);
+
+    return event;
+}
+
+gltfAnimation.prototype.createTimeEvent = function(time, callback) {
+    return this.createTimeRangeEvent(time, time, callback);
+}
+
+gltfAnimation.prototype.deleteTimeEvent = function(event)
+{
+    let index = this.__events.indexOf(event);
+    if(index < 0) return false;
+
+    this.__events.splice(index, 1);
+    return true;
+}
+
+gltfAnimation.prototype.clearTimeEvents = function() {
+    this.__events.length = 0;
 }
 
 let glTFAnimator = function(glTF)
@@ -574,12 +648,13 @@ glTFAnimator.prototype.__resetAnimationMatrices = function()
 
 glTFAnimator.prototype.__forceUpdate = function(animationTime)
 {
+    let shouldUpdateAnimationEvents = (animationTime != null);
     if(animationTime == null) animationTime = this.__activeAnimation.__time;
 
     this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame.slice(0);
     this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame.slice(0);
     
-    this.__activeAnimation.__update(animationTime);
+    this.__activeAnimation.__update(animationTime, shouldUpdateAnimationEvents);
 
     if(this.__animationMatricesLastFrame.length < 1) this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame;
     if(this.__bonesMatricesLastFrame.length     < 1) this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame;
@@ -591,9 +666,11 @@ glTFAnimator.prototype.update = function(dt)
 {
     if(this.playing())
     {
+        let lastTime = this.__time;
         this.__time += Math.max(dt, 0.0);
 
         let shouldStop        = false;
+        let shouldFlip        = false;
         let animationTime     = this.__time;
         let animationDuration = this.__activeAnimation.getDuration();
         
@@ -601,9 +678,13 @@ glTFAnimator.prototype.update = function(dt)
         {
             case glTFAnimator.RepeatMode.REWIND_REPEAT:
             {
-                if(Math.floor(animationTime / animationDuration) % 2 == 0) animationTime = (animationTime % animationDuration);
-                else animationTime = animationDuration - (animationTime % animationDuration);
-
+                if(Math.floor(animationTime / animationDuration) % 2 > 0)
+                {
+                    shouldFlip = true;
+                    animationTime = animationDuration - (animationTime % animationDuration);
+                    
+                } else  animationTime = (animationTime % animationDuration);
+                
             } break;
 
             case glTFAnimator.RepeatMode.NO_REPEAT:
@@ -618,13 +699,25 @@ glTFAnimator.prototype.update = function(dt)
                 
             } break;
         }
-
+        
         if(this.__repeatMode > 0 && Math.floor(this.__time / animationDuration) > this.__repeatMode)
         {
             animationTime = animationDuration;
             shouldStop = true;
         }
 
+        let shouldResetAnimationTime = (!shouldStop && Math.floor(lastTime / animationDuration) != Math.floor(this.__time / animationDuration));
+        if(shouldResetAnimationTime) 
+        {
+            this.__activeAnimation.__setTime(animationDuration);
+
+            if(!shouldFlip && this.__repeatMode != glTFAnimator.RepeatMode.NO_REPEAT)
+            {    
+                if(this.__repeatMode == glTFAnimator.RepeatMode.REPEAT || this.__repeatMode > 0) this.__activeAnimation.__updateEvents();
+                this.__activeAnimation.__setTime(0.0);
+            }
+        }
+        
         this.__forceUpdate(animationTime);
 
         if(shouldStop)
@@ -694,7 +787,8 @@ glTFAnimator.prototype.stop = function()
 glTFAnimator.prototype.rewind = function()
 {
     this.__time = 0.0;
-    
+    if(this.__activeAnimation != null) this.__activeAnimation.__setTime(0.0);
+
     if(this.playing()) 
     {
         this.__resetAnimationMatrices();
