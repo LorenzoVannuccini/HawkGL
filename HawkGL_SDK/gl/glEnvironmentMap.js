@@ -74,9 +74,6 @@ glEnvironmentMap.__genEnvMappingProgram = function(ctx)
                                      "#version 300 es                                                                                                                \n" +
                                      "precision mediump float;                                                                                                       \n" +
                                      "                                                                                                                               \n" +
-                                     "uniform mat3 glNormalMatrix;                                                                                                   \n" +
-                                     "uniform mat4 glProjectionMatrix;                                                                                               \n" +
-                                     "                                                                                                                               \n" +
                                      "uniform mediump sampler2D skyMap;                                                                                              \n" +
                                      "uniform mediump sampler2D patchMap;                                                                                            \n" +
                                      "                                                                                                                               \n" +

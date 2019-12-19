@@ -732,10 +732,10 @@ glTFAnimator.prototype.__updateContextAnimationMatrices = function()
 {
     if(this.__shouldUpdateContext)
     {
-        this.__ctx.__standardUniformsBlock.glAnimationMatricesCurrentFrame.set(this.__animationMatricesCurrentFrame);
-        this.__ctx.__standardUniformsBlock.glAnimationMatricesLastFrame.set(this.__animationMatricesLastFrame);
-        this.__ctx.__standardUniformsBlock.glBonesMatricesCurrentFrame.set(this.__bonesMatricesCurrentFrame);
-        this.__ctx.__standardUniformsBlock.glBonesMatricesLastFrame.set(this.__bonesMatricesLastFrame);
+        this.__ctx.__animationUniformsBlock.glAnimationMatricesCurrentFrame.set(this.__animationMatricesCurrentFrame);
+        this.__ctx.__animationUniformsBlock.glAnimationMatricesLastFrame.set(this.__animationMatricesLastFrame);
+        this.__ctx.__animationUniformsBlock.glBonesMatricesCurrentFrame.set(this.__bonesMatricesCurrentFrame);
+        this.__ctx.__animationUniformsBlock.glBonesMatricesLastFrame.set(this.__bonesMatricesLastFrame);
         
         this.__shouldUpdateContext = false;
     }

@@ -1,10 +1,6 @@
 #version 300 es
 precision mediump float;
 
-uniform mat3 glNormalMatrix;
-uniform mat4 glModelViewMatrix;
-uniform mat4 glModelViewProjectionMatrix;
-
 uniform vec3 lightVector;
 uniform mat4 shadowMatrix;
 

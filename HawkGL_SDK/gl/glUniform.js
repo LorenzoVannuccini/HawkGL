@@ -122,7 +122,7 @@ glUniformBlockIndex.prototype.get = function() {
 }
 
 glUniformBlockIndex.prototype.__sendToGPU = function() {
-    this.__ctx.uniformBlockBinding(this.__program.getProgramID(), this.__locationID, this.__clientData[0]);
+    this.__ctx.uniformBlockBinding(this.__program.getProgramID(), this.__locationID, (this.__clientData[0] + this.__program.__ctx.__reservedUniformBlockUnits));
 }
 
 // -------------------------------------------------------------------------------------------

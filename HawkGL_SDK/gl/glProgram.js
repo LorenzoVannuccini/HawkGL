@@ -345,8 +345,8 @@ glProgram.prototype.compile = function()
         
         gl.linkProgram(this.__programID); 
         status *= gl.getProgramParameter(this.__programID, gl.LINK_STATUS);
-
-        this.__ctx.__createProgramStandardUniforms(this);
+        
+        this.__ctx.__bindProgramStandardUniformsBlock(this);
     }
 
     this.__ready = status;
