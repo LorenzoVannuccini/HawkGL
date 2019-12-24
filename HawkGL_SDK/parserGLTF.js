@@ -460,6 +460,30 @@ gltfAnimation.prototype.__setTime = function(time) {
 
 gltfAnimation.__updateID = 0;
 
+gltfAnimation.prototype.__createTransitionPose = function(transitionTime)
+{
+    function updateTransitionPose(nodes, node)
+    {
+        if(node.skinned || node.animated)
+        {
+            node.transitionPose_translation = new glVector3f(node.translation);
+            node.transitionPose_rotation = new glVector4f(node.rotation);
+            node.transitionPose_scale = new glVector3f(node.scale);
+
+            node.transitionTime = transitionTime;
+        }
+
+        for(let i = 0, e = node.children.length; i != e; ++i) updateTransitionPose(nodes, node.children[i]);
+    }
+
+    for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
+    {
+        for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
+            updateTransitionPose(this.__animator.__nodes, nodes[k]);
+        }
+    }
+}
+
 gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 {
     ++gltfAnimation.__updateID;
@@ -487,6 +511,27 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
             case MinimalGLTFLoader.Target.Path.ROTATION:    node.rotation.set(transform.x, transform.y, transform.z, transform.w); break;
             case MinimalGLTFLoader.Target.Path.SCALE:       node.scale.set(transform.x, transform.y, transform.z);                 break;
         }
+        
+        if(node.transitionTime > time)
+        {
+            let t = (time / node.transitionTime);
+            
+            node.translation.set((node.transitionPose_translation.x * (1.0 - t) + node.translation.x * t),
+                                 (node.transitionPose_translation.y * (1.0 - t) + node.translation.y * t),
+                                 (node.transitionPose_translation.z * (1.0 - t) + node.translation.z * t));
+
+            node.scale.set((node.transitionPose_scale.x * (1.0 - t) + node.scale.x * t),
+                           (node.transitionPose_scale.y * (1.0 - t) + node.scale.y * t),
+                           (node.transitionPose_scale.z * (1.0 - t) + node.scale.z * t));
+            
+            let qa = new glQuaternion(node.transitionPose_rotation.x, node.transitionPose_rotation.y, node.transitionPose_rotation.z, node.transitionPose_rotation.w);
+            let qb = new glQuaternion(node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w);
+                
+            let q = glQuaternion.slerp(qa, qb, t);
+
+            node.rotation.set(q.__x, q.__y, q.__z, q.__w);
+
+        } else node.transitionTime = 0.0;
 
         node.updateMatrixFromTRS();
     }
@@ -650,14 +695,17 @@ glTFAnimator.prototype.getAnimationPlaying = function() {
     return this.__activeAnimation;
 }
 
-glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish)
+glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish, transitionTime)
 {
     if(typeof animation === "string" || animation instanceof String) animation = this.getAnimation(animation);
     
+    transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.2), 0.0), animation.getDuration() * 0.5);
+    if(transitionTime > 0.0) animation.__createTransitionPose(transitionTime);
+
     this.__activeAnimation = animation;
     this.__onFinishCallback = onFinish;
     this.__repeatMode = ((repeatMode != null) ? repeatMode : glTFAnimator.RepeatMode.NO_REPEAT);
-    
+
     this.rewind();
     this.resume();
 }
@@ -691,6 +739,8 @@ glTFAnimator.prototype.update = function(dt)
         let lastTime = this.__time;
         this.__time += Math.max(dt, 0.0);
 
+        let epsilon = 0.0000001;
+        
         let shouldStop        = false;
         let shouldFlip        = false;
         let animationTime     = this.__time;
@@ -705,14 +755,14 @@ glTFAnimator.prototype.update = function(dt)
                     shouldFlip = true;
                     animationTime = animationDuration - (animationTime % animationDuration);
                     
-                } else  animationTime = (animationTime % animationDuration);
+                } else animationTime = (animationTime % animationDuration);
                 
             } break;
 
             case glTFAnimator.RepeatMode.NO_REPEAT:
             {
-                animationTime = Math.min(animationTime, animationDuration);
-                if(animationTime >= animationDuration) shouldStop = true;
+                animationTime = Math.min(animationTime, animationDuration - epsilon);
+                if(animationTime >= animationDuration - epsilon) shouldStop = true;
 
             } break;
 
@@ -724,7 +774,7 @@ glTFAnimator.prototype.update = function(dt)
         
         if(this.__repeatMode > 0 && Math.floor(this.__time / animationDuration) > this.__repeatMode)
         {
-            animationTime = animationDuration;
+            animationTime = animationDuration - epsilon;
             shouldStop = true;
         }
 
@@ -744,7 +794,7 @@ glTFAnimator.prototype.update = function(dt)
 
         if(shouldStop)
         {
-            this.stop();
+            this.__activeAnimation = null;
             if(this.__onFinishCallback != null) this.__onFinishCallback(this);
         }
     }
@@ -810,7 +860,7 @@ glTFAnimator.prototype.rewind = function()
 {
     this.__time = 0.0;
     if(this.__activeAnimation != null) this.__activeAnimation.__setTime(0.0);
-
+    
     if(this.playing()) 
     {
         this.__resetAnimationMatrices();
