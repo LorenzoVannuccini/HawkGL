@@ -292,6 +292,7 @@ glCinematicCamera.__genProgram = function(ctx)
         program = new glProgram(ctx, "#version 300 es                                                            \n" +
                                      "precision highp float;                                                     \n" +
                                      "                                                                           \n" +
+                                     "uniform mat4 glModelViewProjectionMatrix;                                  \n" +
                                      "uniform float pointSize;                                                   \n" +
                                      "                                                                           \n" +
                                      "void main()                                                                \n" +

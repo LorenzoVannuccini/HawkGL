@@ -23,8 +23,8 @@
     SOFTWARE.
 */
 
-var NUM_MAX_JOINTS = 128;
-var MinimalGLTFLoader = MinimalGLTFLoader || {};
+let NUM_MAX_JOINTS = 128;
+let MinimalGLTFLoader = {};
 
 MinimalGLTFLoader.Type2NumOfComponent =
 {
@@ -72,7 +72,7 @@ MinimalGLTFLoader.Scene = function (gltf, s)
 {
     this.name = s.name !== undefined ? s.name : null;
     this.nodes = new Array(s.nodes.length);    // root node object of this scene
-    for (var i = 0, len = s.nodes.length; i < len; i++) {
+    for (let i = 0, len = s.nodes.length; i < len; i++) {
         this.nodes[i] = gltf.nodes[s.nodes[i]];
     }
 
@@ -131,24 +131,24 @@ MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
     let wy = w * y2;
     let wz = w * z2;
     
-    this.matrix.__m[0] = 1.0 - (yy + zz);
+    this.matrix.__m[0] = (1.0 - (yy + zz)) * this.scale.x;
     this.matrix.__m[1] = xy + wz;
     this.matrix.__m[2] = xz - wy;
     this.matrix.__m[3] = 0.0;
     this.matrix.__m[4] = xy - wz;
-    this.matrix.__m[5] = 1.0 - (xx + zz);
+    this.matrix.__m[5] = (1.0 - (xx + zz)) * this.scale.y;
     this.matrix.__m[6] = yz + wx;
     this.matrix.__m[7] = 0.0;
     this.matrix.__m[8] = xz + wy;
     this.matrix.__m[9] = yz - wx;
-    this.matrix.__m[10] = 1.0 - (xx + yy);
+    this.matrix.__m[10] = (1.0 - (xx + yy)) * this.scale.z;
     this.matrix.__m[11] = 0.0;
     this.matrix.__m[12] = v.x;
     this.matrix.__m[13] = v.y;
     this.matrix.__m[14] = v.z;
     this.matrix.__m[15] = 1.0;
     
-    this.matrix.mul(glMatrix4x4f.scaleMatrix(this.scale));
+    if(this.scale.x != 1.0 || this.scale.y != 1.0 || this.scale.z != 1.0) this.matrix.mul(glMatrix4x4f.scaleMatrix(this.scale));
 }
 
 MinimalGLTFLoader.Mesh = function (loader, m, meshID)
@@ -158,9 +158,9 @@ MinimalGLTFLoader.Mesh = function (loader, m, meshID)
 
     this.primitives = [];   // required
     
-    var p, primitive;
+    let p, primitive;
 
-    for (var i = 0, len = m.primitives.length; i < len; ++i) {
+    for (let i = 0, len = m.primitives.length; i < len; ++i) {
         p = m.primitives[i];
         primitive = new MinimalGLTFLoader.Primitive(loader.glTF, p);
         this.primitives.push(primitive);
@@ -178,7 +178,7 @@ MinimalGLTFLoader.Primitive = function (gltf, p)
     this.attributes = p.attributes;
     this.indices = p.indices !== undefined ? p.indices : null;  // accessor id
     
-    var attname;
+    let attname;
    
     if (this.indices !== null) {
         this.indicesComponentType = gltf.json.accessors[this.indices].componentType;
@@ -272,7 +272,7 @@ MinimalGLTFLoader.Skin = function (gltf, s, skinID) {
     this.skinID = skinID;
 
     this.joints = new Array(s.joints.length);   // required
-    var i, len;
+    let i, len;
     for (i = 0, len = this.joints.length; i < len; i++) {
         this.joints[i] = gltf.nodes[s.joints[i]];
     }
@@ -297,13 +297,22 @@ MinimalGLTFLoader.Skin = function (gltf, s, skinID) {
 // animation has no potential plan for progressive rendering I guess
 // so everything happens after all buffers are loaded
 
-MinimalGLTFLoader.Target = function (t) {
+MinimalGLTFLoader.Target = function (t)
+{
     this.nodeID = t.node !== undefined ? t.node : null ;  //id, to be hooked up to object later
-    this.path = t.path;     //required, string
+ 
+    switch(t.path) //required, string
+    {
+        case "translation": this.path = MinimalGLTFLoader.Target.Path.TRANSLATION; break;
+        case "rotation":    this.path = MinimalGLTFLoader.Target.Path.ROTATION;    break;
+        case "scale":       this.path = MinimalGLTFLoader.Target.Path.SCALE;       break;
+    }
 
     this.extensions = t.extensions !== undefined ? t.extensions : null;
     this.extras = t.extras !== undefined ? t.extras : null;
 };
+
+MinimalGLTFLoader.Target.Path = Object.freeze({"TRANSLATION":0, "ROTATION":1, "SCALE":2});
 
 MinimalGLTFLoader.Channel = function (c, animation) {
     this.sampler = animation.samplers[c.sampler];   //required
@@ -340,16 +349,17 @@ MinimalGLTFLoader.AnimationSampler = function (gltf, s) {
     this.inputMax = this.endT - this.inputTypedArray[0];
 };
 
-var animationOutputValueVec4a = new Array(4);
-var animationOutputValueVec4b = new Array(4);
+let animationOutputValueVec4a = new Array(4);
+let animationOutputValueVec4b = new Array(4);
 
-MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t) {
+MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t)
+{
     if (t > this.endT) {
         t -= this.inputMax * Math.ceil((t - this.endT) / this.inputMax);
         this.curIdx = 0;
     }
 
-    var len = this.inputTypedArray.length;
+    let len = this.inputTypedArray.length;
     while(this.curIdx > 0 && t <= this.inputTypedArray[this.curIdx]) this.curIdx--;
     while(this.curIdx <= len - 2 && t >= this.inputTypedArray[this.curIdx + 1]) this.curIdx++;
     
@@ -360,7 +370,7 @@ MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t) {
     }
 
     // @tmp: assume no stride
-    var count = MinimalGLTFLoader.Type2NumOfComponent[this.output.type];
+    let count = MinimalGLTFLoader.Type2NumOfComponent[this.output.type];
     
     let interpolate = ((count === 4) ? function(t) // quaternion slerp
     {
@@ -382,13 +392,13 @@ MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t) {
                               (va.w * (1.0 - t) + vb.w * t));
     });
 
-    var i = this.curIdx;
-    var o = i * count;
-    var on = o + count;
+    let i = this.curIdx;
+    let o = i * count;
+    let on = o + count;
     
     let u = ((len > 1) ? Math.max(0.0, t - this.inputTypedArray[i]) / (this.inputTypedArray[i + 1] - this.inputTypedArray[i]) : 0.0);
     
-    for (var j = 0; j < 4; ++j)
+    for (let j = 0; j < 4; ++j)
     {
         animationOutputValueVec4a[j] = ((j < count) ? this.outputTypedArray[o  + j] : null);
         animationOutputValueVec4b[j] = ((j < count) ? this.outputTypedArray[on + j] : null);
@@ -406,7 +416,7 @@ MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t) {
 MinimalGLTFLoader.Animation = function (gltf, a) {
     this.name = a.name !== undefined ? a.name : null;
 
-    var i, len;
+    let i, len;
 
     this.duration = 0.0;
     this.samplers = []; // required, array of animation sampler
@@ -448,25 +458,34 @@ gltfAnimation.prototype.__setTime = function(time) {
     this.__time = this.__lastTime = time;
 }
 
+gltfAnimation.__updateID = 0;
+
 gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 {
+    ++gltfAnimation.__updateID;
+
     this.__time = Math.min(Math.max(time, 0.0), this.getDuration());
     
-    for(let i = 0, e = this.__animation.samplers.length; i != e; ++i) this.__animation.samplers[i].getValue(this.__time);
-
     for(let i = 0, e = this.__animation.channels.length; i != e; ++i)
     {
         let channel = this.__animation.channels[i];
-        let animationSampler = channel.sampler;
-        let node = this.__animator.__nodes[channel.target.nodeID];
+        let sampler = channel.sampler;
+        let target = channel.target;
 
-        let transform = animationSampler.curValue;
-        
-        switch(channel.target.path)
+        if(sampler.__updateID != gltfAnimation.__updateID)
         {
-            case "translation": node.translation.set(transform.x, transform.y, transform.z);           break;
-            case "rotation":    node.rotation.set(transform.x, transform.y, transform.z, transform.w); break;
-            case "scale":       node.scale.set(transform.x, transform.y, transform.z);                 break;
+            sampler.__updateID = gltfAnimation.__updateID;
+            sampler.getValue(this.__time);
+        }
+        
+        let transform = sampler.curValue;
+        let node = this.__animator.__nodes[target.nodeID];
+        
+        switch(target.path)
+        {
+            case MinimalGLTFLoader.Target.Path.TRANSLATION: node.translation.set(transform.x, transform.y, transform.z);           break;
+            case MinimalGLTFLoader.Target.Path.ROTATION:    node.rotation.set(transform.x, transform.y, transform.z, transform.w); break;
+            case MinimalGLTFLoader.Target.Path.SCALE:       node.scale.set(transform.x, transform.y, transform.z);                 break;
         }
 
         node.updateMatrixFromTRS();
@@ -482,24 +501,27 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
         
         if(node.skinned)
         {
-            var skin = node.skin;
-            var joints = node.skin.joints;
-            
-            // @tmp: assume joint nodes are always in the front of the scene node list
-            // so that their matrices are ready to use
-            for(let i = 0, len = joints.length; i < len; ++i)
+            let skin = node.skin;
+    
+            if(skin.__updateID != gltfAnimation.__updateID)
             {
-                let jointNode = joints[i];
+                let joints = skin.joints;
+                skin.__updateID = gltfAnimation.__updateID;
+                
+                for(let i = 0, len = joints.length; i < len; ++i)
+                {
+                    let jointNode = joints[i];
 
-                let tmpMat4 = glMatrix4x4f.mul(nodes[jointNode.nodeID].globalTransform, skin.inverseBindMatrix[i]);
-                self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
+                    let tmpMat4 = glMatrix4x4f.mul(nodes[jointNode.nodeID].globalTransform, skin.inverseBindMatrix[i]);
+                    self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
 
-                // if (skin.skeleton !== null) {
-                //     mat4.mul(tmpMat4, inverseSkeletonRootMat4, tmpMat4);
-                // }
+                    // if (skin.skeleton !== null) {
+                    //     mat4.mul(tmpMat4, inverseSkeletonRootMat4, tmpMat4);
+                    // }
+                }
             }
         }
-
+        
         for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(nodes, node.children[i], glMatrix4x4f.mul(nodeTransform, node.children[i].matrix));
     }
     
@@ -875,7 +897,7 @@ MinimalGLTFLoader.__getAccessorData = function(accessor)
                                                          accessor.componentType ) : null);
 }
 
-var glTFLoader = MinimalGLTFLoader.glTFLoader = function ()
+let glTFLoader = MinimalGLTFLoader.glTFLoader = function ()
 {    
     this._init();
     this.glTF = null;
@@ -1015,7 +1037,7 @@ glTFLoader.prototype._postprocess = function ()
         }
     }
 
-    var joints;
+    let joints;
     // if (this.glTF.skins) {
     if (this.glTF.json.skins) {
         for (let i = 0, leni = this.glTF.skins.length, baseMatrixID = 0; i < leni; i++) {
@@ -1218,7 +1240,7 @@ glTFLoader.prototype.parseGLTF = function(json, bufferLoaderCallback, textureLoa
 {
     this._init();
    
-    var loader = this;
+    let loader = this;
     loader.glTF = new MinimalGLTFLoader.glTFModel(json);
 
     let pendingTasks = new DispatchQueue(); 
