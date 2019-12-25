@@ -68,7 +68,8 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("fileManager.js");
     includeScriptSDK("progressMeter.js");
     includeScriptSDK("CCapture.all.min.js");
-    
+    includeScriptSDK("InputDeviceManager.js");
+
     includeScriptSDK("gl/glVector2f.js");
     includeScriptSDK("gl/glVector3f.js");
     includeScriptSDK("gl/glVector4f.js");

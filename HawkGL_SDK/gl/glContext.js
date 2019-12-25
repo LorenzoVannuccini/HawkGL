@@ -39,6 +39,7 @@ let glContext = function(canvasID)
 
     this.__gl = this.__canvas.getContext("webgl2", options);
     
+    this.__inputDeviceManager = new InputDeviceManager();
     this.__pendingAssets = new ProgressMeter();
     this.__fpsCounter = new fpsCounter();
     this.__timeElapsed = 0.0;
@@ -783,6 +784,8 @@ glContext.prototype.run = function()
     {
         let self = this;
         let gl = this.getGL();
+    
+        this.__inputDeviceManager.enable();
 
         if(!this.__initialized)
         {
@@ -846,7 +849,8 @@ glContext.prototype.pause = function()
     if(this.isRunning())
     {
         glContext.__cancelAnimationFrame(this.__animationFrameRequestID);
-
+        this.__inputDeviceManager.disable();
+        
         this.__animationFrameRequestID = null;
         this.__lastTick = null;
     }
@@ -1499,4 +1503,8 @@ glContext.prototype.textureToImage = function(texture, width, height, onLoad)
     img.src = this.textureToBase64(texture, width, height);
     
     return img;
+}
+
+glContext.prototype.getInputManager = function() {
+    return this.__inputDeviceManager;
 }
