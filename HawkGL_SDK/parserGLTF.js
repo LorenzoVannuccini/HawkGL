@@ -442,9 +442,19 @@ let gltfAnimation = function(animator, animation)
     this.__animation = animation;
 
     this.__events = [];
-
     this.__setTime(0.0);
+
+    let self = this;
+    this.__state = animator.__stateManager.createState(function() {
+        self.__animator.playAnimation(self, glTFAnimator.RepeatMode.REPEAT);
+    });
 } 
+
+gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
+{
+    if(typeof animation === "string" || animation instanceof String) animation = this.__animator.getAnimation(animation);
+    this.__state.onInput(input, animation.__state, conditionalFunctor);
+}
 
 gltfAnimation.prototype.getName = function() {
     return this.__animation.name;
@@ -648,7 +658,8 @@ gltfAnimation.prototype.clearTimeEvents = function() {
 
 let glTFAnimator = function(glTF)
 {
-    this.__animations = new Map();
+    this.__animations   = new Map();
+    this.__stateManager = new StateMachine();
     
     this.__scenes = glTF.scenes;
     this.__nodes  = glTF.nodes;
@@ -706,6 +717,8 @@ glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish,
     this.__onFinishCallback = onFinish;
     this.__repeatMode = ((repeatMode != null) ? repeatMode : glTFAnimator.RepeatMode.NO_REPEAT);
 
+    this.__stateManager.setState(animation.__state, false);
+
     this.rewind();
     this.resume();
 }
@@ -734,6 +747,8 @@ glTFAnimator.prototype.__forceUpdate = function(animationTime)
 
 glTFAnimator.prototype.update = function(dt)
 {
+    if(this.__persistentInput != null) this.input(this.__persistentInput);
+    
     if(this.playing())
     {
         let lastTime = this.__time;
@@ -866,6 +881,16 @@ glTFAnimator.prototype.rewind = function()
         this.__resetAnimationMatrices();
         this.__forceUpdate();
     }
+}
+
+glTFAnimator.prototype.createInput = function() {
+    return this.__stateManager.createInput();
+}
+
+glTFAnimator.prototype.input = function(input, persistent)
+{
+    if(persistent) this.__persistentInput = input;
+    this.__stateManager.input(input);
 }
 
 glTFAnimator.prototype.size = function() {

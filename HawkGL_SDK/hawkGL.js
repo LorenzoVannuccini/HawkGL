@@ -66,6 +66,7 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("dispatch.js");
     includeScriptSDK("fpsCounter.js");
     includeScriptSDK("fileManager.js");
+    includeScriptSDK("stateMachine.js");
     includeScriptSDK("progressMeter.js");
     includeScriptSDK("CCapture.all.min.js");
     includeScriptSDK("InputDeviceManager.js");

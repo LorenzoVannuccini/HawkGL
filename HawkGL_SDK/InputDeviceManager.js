@@ -180,7 +180,7 @@ InputDeviceManager.prototype.__registerHooks = function()
         if(shouldFireEvent && self.__enabled) 
         {
             let events = self.__onKeyClickedEvents.get(keyCode);
-            if(events != null) for(let i = 0, e = events.length; i != e; ++i) events[i](self);
+            if(events != null) for(let i = 0, e = events.length; i != e; ++i) events[i](keyCode);
         }
     };
 
@@ -328,6 +328,24 @@ InputDeviceManager.prototype.isKeyClicked = function(keyCode) {
     return (this.__enabled && this.__keyState[keyCode] == 1);
 }
 
+InputDeviceManager.prototype.isAnyKeyClicked = function(keyCodeArray)
+{
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) if(this.isKeyClicked(keyCodeArray[i])) return true;
+    return false;
+}
+
+InputDeviceManager.prototype.isAnyKeyPressed = function(keyCodeArray)
+{
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) if(this.isKeyPressed(keyCodeArray[i])) return true;
+    return false;
+}
+
+InputDeviceManager.prototype.areAllKeysPressed = function(keyCodeArray)
+{
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) if(!this.isKeyPressed(keyCodeArray[i])) return false;
+    return true;
+}
+
 InputDeviceManager.prototype.isMouseLeftKeyPressed = function() {
     return this.isKeyPressed(KeyCodes.MOUSE_LEFT_BUTTON);
 }
@@ -423,6 +441,27 @@ InputDeviceManager.prototype.__unregisterDragEvent = function(keyCode, event)
     }
 }
 
+InputDeviceManager.prototype.__createOnAllKeysDownFunctor = function(keyCodeArray, event)
+{
+    let self = this;
+
+    return function() {
+        if(self.areAllKeysPressed(keyCodeArray)) event(keyCodeArray);
+    };
+}
+
+InputDeviceManager.prototype.createEventOnKey = function(keyCode, event)
+{
+    this.createEventOnKeyDown(keyCode, event);
+    this.createEventOnKeyRelease(keyCode, event);    
+}
+
+InputDeviceManager.prototype.removeEventOnKey = function(keyCode, event)
+{
+    this.removeEventOnKeyDown(keyCode, event);
+    this.removeEventOnKeyRelease(keyCode, event);  
+}
+
 InputDeviceManager.prototype.createEventOnKeyDown = function(keyCode, event) {
     this.__registerKeyboardEvent(this.__onKeyClickedEvents, keyCode, event);
 }
@@ -437,6 +476,42 @@ InputDeviceManager.prototype.createEventOnKeyRelease = function(keyCode, event) 
 
 InputDeviceManager.prototype.removeEventOnKeyRelease = function(keyCode, event) {
     this.__unregisterKeyboardEvent(this.__onKeyReleaseEvents, keyCode, event);
+}
+
+InputDeviceManager.prototype.createEventOnAnyKey = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.createEventOnKey(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.removeEventOnAnyKey = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.removeEventOnKey(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.createEventOnAnyKeyDown = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.createEventOnKeyDown(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.removeEventOnAnyKeyDown = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.removeEventOnKeyDown(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.createEventOnAnyKeyRelease = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.createEventOnKeyRelease(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.removeEventOnAnyKeyRelease = function(keyCodeArray, event) {
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.releaseEventOnKeyRelease(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.createEventOnAllKeysDown = function(keyCodeArray, event)
+{
+    event = this.__createOnAllKeysDownFunctor(keyCodeArray, event);
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.createEventOnKeyDown(keyCodeArray[i], event);
+}
+
+InputDeviceManager.prototype.removeEventOnAllKeysDown = function(keyCodeArray, event)
+{
+    event = this.__createOnAllKeysDownFunctor(keyCodeArray, event);
+    for(let i = 0, e = keyCodeArray.length; i != e; ++i) this.removeEventOnKeyDown(keyCodeArray[i], event);
 }
 
 InputDeviceManager.prototype.createEventOnMouseWheel = function(event) {
