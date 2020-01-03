@@ -453,7 +453,7 @@ let gltfAnimation = function(animator, animation)
 gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
 {
     if(typeof animation === "string" || animation instanceof String) animation = this.__animator.getAnimation(animation);
-    this.__state.onInput(input, animation.__state, conditionalFunctor);
+    if(animation != null) this.__state.onInput(input, animation.__state, conditionalFunctor);
 }
 
 gltfAnimation.prototype.getName = function() {
