@@ -436,19 +436,47 @@ MinimalGLTFLoader.Animation = function (gltf, a) {
     this.extras = a.extras !== undefined ? a.extras : null;
 };
 
-let gltfAnimation = function(animator, animation)
+let gltfAnimation = function(animator, animation, timeStart, timeEnd)
 {
-    this.__animator  = animator;
-    this.__animation = animation;
+    if(timeStart == null) timeStart = 0.0;
 
-    this.__events = [];
-    this.__setTime(0.0);
+    this.__animator  = animator;
+
+    this.__animation = animation;
+    this.__name = animation.name;
+    
+    this.__timeStart = ((timeStart != null) ? timeStart : 0.0);
+    this.__timeEnd   = ((timeEnd   != null) ? timeEnd   : animation.duration);
+    this.__duration  = (this.__timeEnd - this.__timeStart);
 
     let self = this;
+    this.__events = [];
+
+    this.__setTime(this.__timeStart);    
+
     this.__state = animator.__stateManager.createState(function() {
         self.__animator.playAnimation(self, glTFAnimator.RepeatMode.REPEAT);
     });
 } 
+
+gltfAnimation.prototype.slice = function(timeStart, timeEnd)
+{
+    if(timeStart == null) timeStart = 0.0;
+    if(timeEnd   == null) timeEnd = this.getDuration();
+
+    timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration());
+    timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration());
+    
+    if(timeEnd < timeStart)
+    {
+        let tmp = timeStart;
+
+        timeStart = timeEnd;
+        timeEnd = tmp;
+    }
+
+    return new gltfAnimation(this.__animator, this.__animation, timeStart, timeEnd);
+}
 
 gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
 {
@@ -457,11 +485,11 @@ gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
 }
 
 gltfAnimation.prototype.getName = function() {
-    return this.__animation.name;
+    return this.__name;
 }
 
 gltfAnimation.prototype.getDuration = function() {
-    return this.__animation.duration;
+    return this.__duration;
 }
 
 gltfAnimation.prototype.__setTime = function(time) {
@@ -509,7 +537,7 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
         if(sampler.__updateID != gltfAnimation.__updateID)
         {
             sampler.__updateID = gltfAnimation.__updateID;
-            sampler.getValue(this.__time);
+            sampler.getValue(this.__timeStart + this.__time);
         }
         
         let transform = sampler.curValue;
@@ -521,7 +549,7 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
             case MinimalGLTFLoader.Target.Path.ROTATION:    node.rotation.set(transform.x, transform.y, transform.z, transform.w); break;
             case MinimalGLTFLoader.Target.Path.SCALE:       node.scale.set(transform.x, transform.y, transform.z);                 break;
         }
-        
+
         if(node.transitionTime > time)
         {
             let t = (time / node.transitionTime);
@@ -618,6 +646,11 @@ gltfAnimation.prototype.__updateEvents = function()
 
 gltfAnimation.prototype.createTimeRangeEvent = function(timeStart, timeEnd, callback)
 {
+    let epsilon = 0.0000001;
+    
+    timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration() - epsilon);
+    timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration() - epsilon);
+
     if(timeEnd < timeStart) 
     {
         let tmp = timeStart;
@@ -688,6 +721,16 @@ glTFAnimator.prototype.__createAnimation = function(animation) {
     this.__animations.set(animation.name, new gltfAnimation(this, animation));
 }
 
+glTFAnimator.prototype.createSubAnimation = function(name, baseAnimation, timeStart, timeEnd)
+{
+    if(typeof baseAnimation === "string" || baseAnimation instanceof String) baseAnimation = this.getAnimation(baseAnimation);
+    
+    let animation = baseAnimation.slice(timeStart, timeEnd);
+    animation.__name = name;
+
+    this.__animations.set(name, animation);
+}
+
 glTFAnimator.prototype.getAnimations = function()
 {
     let nAnimations = this.size();
@@ -712,7 +755,7 @@ glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish,
     
     transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.2), 0.0), animation.getDuration() * 0.5);
     if(transitionTime > 0.0) animation.__createTransitionPose(transitionTime);
-
+    
     this.__activeAnimation = animation;
     this.__onFinishCallback = onFinish;
     this.__repeatMode = ((repeatMode != null) ? repeatMode : glTFAnimator.RepeatMode.NO_REPEAT);
@@ -796,7 +839,7 @@ glTFAnimator.prototype.update = function(dt)
         let shouldResetAnimationTime = (!shouldStop && Math.floor(lastTime / animationDuration) != Math.floor(this.__time / animationDuration));
         if(shouldResetAnimationTime) 
         {
-            this.__activeAnimation.__setTime(animationDuration);
+            this.__activeAnimation.__setTime(animationDuration - epsilon);
 
             if(!shouldFlip && this.__repeatMode != glTFAnimator.RepeatMode.NO_REPEAT)
             {    
