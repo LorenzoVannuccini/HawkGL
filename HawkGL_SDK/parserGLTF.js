@@ -463,6 +463,7 @@ let gltfAnimation = function(animator, animation, timeStart, timeEnd)
     let self = this;
     this.__events = [];
 
+    this.__speed = 1.0;
     this.__setTime(this.__timeStart);    
 
     this.__state = animator.__stateManager.createState(function() {
@@ -478,15 +479,21 @@ gltfAnimation.prototype.slice = function(timeStart, timeEnd)
     timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration());
     timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration());
     
+    let shouldFlip = false;
     if(timeEnd < timeStart)
     {
         let tmp = timeStart;
 
         timeStart = timeEnd;
         timeEnd = tmp;
+
+        shouldFlip = true;
     }
 
-    return new gltfAnimation(this.__animator, this.__animation, timeStart, timeEnd);
+    let animation = new gltfAnimation(this.__animator, this.__animation, timeStart, timeEnd);
+    if(shouldFlip) animation.flip();
+
+    return animation;
 }
 
 gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
@@ -722,6 +729,18 @@ gltfAnimation.prototype.clearTimeEvents = function() {
     this.__events.length = 0;
 }
 
+gltfAnimation.prototype.setSpeed = function(speed) {
+    this.__speed = Math.abs(speed) * Math.sign(this.__speed);
+}
+
+gltfAnimation.prototype.getSpeed = function() {
+    return Math.abs(this.__speed);
+}
+
+gltfAnimation.prototype.flip = function() {
+    this.__speed = -this.__speed;
+}
+
 let glTFAnimator = function(glTF)
 {
     this.__animations   = new Map();
@@ -757,11 +776,14 @@ glTFAnimator.prototype.__createAnimation = function(animation) {
 glTFAnimator.prototype.createSubAnimation = function(name, baseAnimation, timeStart, timeEnd)
 {
     if(typeof baseAnimation === "string" || baseAnimation instanceof String) baseAnimation = this.getAnimation(baseAnimation);
-    
+    if(baseAnimation == null) return null;
+
     let animation = baseAnimation.slice(timeStart, timeEnd);
     animation.__name = name;
 
     this.__animations.set(name, animation);
+
+    return animation;
 }
 
 glTFAnimator.prototype.getAnimations = function()
@@ -828,25 +850,22 @@ glTFAnimator.prototype.update = function(dt)
     if(this.playing())
     {
         let lastTime = this.__time;
-        this.__time += Math.max(dt, 0.0);
+        let animationSpeed = this.__activeAnimation.__speed;
+        this.__time += Math.abs(animationSpeed) * Math.max(dt, 0.0);
 
         let epsilon = 0.0000001;
         
         let shouldStop        = false;
-        let shouldFlip        = false;
         let animationTime     = this.__time;
+        let shouldFlip        = (animationSpeed < 0.0);
         let animationDuration = this.__activeAnimation.getDuration();
-        
+
         switch(this.__repeatMode)
         {
             case glTFAnimator.RepeatMode.REWIND_REPEAT:
             {
-                if(Math.floor(animationTime / animationDuration) % 2 > 0)
-                {
-                    shouldFlip = true;
-                    animationTime = animationDuration - (animationTime % animationDuration);
-                    
-                } else animationTime = (animationTime % animationDuration);
+                if(Math.floor(animationTime / animationDuration) % 2 > 0) shouldFlip = !shouldFlip;
+                animationTime = (animationTime % animationDuration);
                 
             } break;
 
@@ -863,21 +882,23 @@ glTFAnimator.prototype.update = function(dt)
             } break;
         }
         
+        if(shouldFlip) animationTime = animationDuration - animationTime;
+                    
         if(this.__repeatMode > 0 && Math.floor(this.__time / animationDuration) > this.__repeatMode)
         {
             animationTime = animationDuration - epsilon;
             shouldStop = true;
         }
 
-        let shouldResetAnimationTime = (!shouldStop && Math.floor(lastTime / animationDuration) != Math.floor(this.__time / animationDuration));
+        let shouldResetAnimationTime = (Math.floor(lastTime / animationDuration) != Math.floor(this.__time / animationDuration));
         if(shouldResetAnimationTime) 
         {
-            this.__activeAnimation.__setTime(animationDuration - epsilon);
+            this.__activeAnimation.__setTime((shouldFlip ? 0.0 : (animationDuration - epsilon)));
 
-            if(!shouldFlip && this.__repeatMode != glTFAnimator.RepeatMode.NO_REPEAT)
+            if(this.__repeatMode != glTFAnimator.RepeatMode.NO_REPEAT)
             {    
                 if(this.__repeatMode == glTFAnimator.RepeatMode.REPEAT || this.__repeatMode > 0) this.__activeAnimation.__updateEvents();
-                this.__activeAnimation.__setTime(0.0);
+                this.__activeAnimation.__setTime((shouldFlip ? (animationDuration - epsilon) : 0.0));
             }
         }
         
@@ -954,7 +975,7 @@ glTFAnimator.prototype.rewind = function()
     if(this.__activeAnimation != null)
     {
         this.__activeAnimation.__resetTransforms();
-        this.__activeAnimation.__setTime(0.0);
+        this.__activeAnimation.__setTime(((this.__activeAnimation.__speed < 0.0) ? this.__activeAnimation.getDuration() : 0.0));
     }
     
     if(this.playing()) 
