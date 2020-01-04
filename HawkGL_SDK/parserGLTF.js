@@ -104,7 +104,18 @@ MinimalGLTFLoader.Node.prototype.getTransformMatrixFromTRS = function(translatio
     this.translation = ((translation != null) ? new glVector3f(translation[0], translation[1], translation[2]) : new glVector3f(0.0));
     this.scale = ((scale != null) ? new glVector3f(scale[0], scale[1], scale[2]) : new glVector3f(1.0));
 
+    if(this.__baseTranslation == null) this.__baseTranslation = new glVector3f(this.translation);
+    if(this.__baseRotation    == null) this.__baseRotation    = new glVector4f(this.rotation);
+    if(this.__baseScale       == null) this.__baseScale       = new glVector3f(this.scale);
+
     this.updateMatrixFromTRS();
+};
+
+MinimalGLTFLoader.Node.prototype.resetTransform = function()
+{
+    this.translation.set(this.__baseTranslation);
+    this.rotation.set(this.__baseRotation);
+    this.scale.set(this.__baseScale);
 };
 
 MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
@@ -498,6 +509,22 @@ gltfAnimation.prototype.__setTime = function(time) {
 
 gltfAnimation.__updateID = 0;
 
+gltfAnimation.prototype.__resetTransforms = function()
+{
+    function resetNodesTransforms(nodes, node)
+    {
+        if(node.skinned || node.animated) node.resetTransform();
+        for(let i = 0, e = node.children.length; i != e; ++i) resetNodesTransforms(nodes, node.children[i]);
+    }
+
+    for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
+    {
+        for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
+            resetNodesTransforms(this.__animator.__nodes, nodes[k]);
+        }
+    }
+}
+
 gltfAnimation.prototype.__createTransitionPose = function(transitionTime)
 {
     function updateTransitionPose(nodes, node)
@@ -543,6 +570,12 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
         let transform = sampler.curValue;
         let node = this.__animator.__nodes[target.nodeID];
         
+        if(node.__updateID != gltfAnimation.__updateID)
+        {
+            node.__updateID = gltfAnimation.__updateID;
+            node.resetTransform();
+        }
+
         switch(target.path)
         {
             case MinimalGLTFLoader.Target.Path.TRANSLATION: node.translation.set(transform.x, transform.y, transform.z);           break;
@@ -917,7 +950,12 @@ glTFAnimator.prototype.stop = function()
 glTFAnimator.prototype.rewind = function()
 {
     this.__time = 0.0;
-    if(this.__activeAnimation != null) this.__activeAnimation.__setTime(0.0);
+    
+    if(this.__activeAnimation != null)
+    {
+        this.__activeAnimation.__resetTransforms();
+        this.__activeAnimation.__setTime(0.0);
+    }
     
     if(this.playing()) 
     {
