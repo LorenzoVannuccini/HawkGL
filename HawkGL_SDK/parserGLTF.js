@@ -103,7 +103,7 @@ MinimalGLTFLoader.Node.prototype.getTransformMatrixFromTRS = function(translatio
     this.rotation = ((rotation != null) ? new glVector4f(rotation[0], rotation[1], rotation[2], rotation[3]) : new glVector4f(0.0, 0.0, 0.0, 1.0));
     this.translation = ((translation != null) ? new glVector3f(translation[0], translation[1], translation[2]) : new glVector3f(0.0));
     this.scale = ((scale != null) ? new glVector3f(scale[0], scale[1], scale[2]) : new glVector3f(1.0));
-
+    
     if(this.__baseTranslation == null) this.__baseTranslation = new glVector3f(this.translation);
     if(this.__baseRotation    == null) this.__baseRotation    = new glVector4f(this.rotation);
     if(this.__baseScale       == null) this.__baseScale       = new glVector3f(this.scale);
@@ -466,12 +466,14 @@ let gltfAnimation = function(animator, animation, timeStart, timeEnd)
     this.__speed = 1.0;
     this.__setTime(this.__timeStart);    
 
+    this.__pivot = new glVector3f(0.0);
+    
     this.__state = animator.__stateManager.createState(function() {
-        self.__animator.playAnimation(self, glTFAnimator.RepeatMode.REPEAT);
+        self.__animator.playAnimation(self, glTFAnimator.RepeatMode.REPEAT, null, self.__transitionTime);
     });
-} 
+}
 
-gltfAnimation.prototype.slice = function(timeStart, timeEnd)
+gltfAnimation.prototype.__slice = function(timeStart, timeEnd)
 {
     if(timeStart == null) timeStart = 0.0;
     if(timeEnd   == null) timeEnd = this.getDuration();
@@ -496,10 +498,16 @@ gltfAnimation.prototype.slice = function(timeStart, timeEnd)
     return animation;
 }
 
-gltfAnimation.prototype.onInput = function(input, animation, conditionalFunctor)
+gltfAnimation.prototype.onInput = function(input, animation, transitionTime, conditionalFunctor)
 {
     if(typeof animation === "string" || animation instanceof String) animation = this.__animator.getAnimation(animation);
-    if(animation != null) this.__state.onInput(input, animation.__state, conditionalFunctor);
+    if(animation != null) this.__state.onInput(input, animation.__state, function()
+    {
+        let shouldPlayAnimation = ((conditionalFunctor != null) ? conditionalFunctor() : true);
+        if(shouldPlayAnimation) animation.__transitionTime = transitionTime;
+        
+        return shouldPlayAnimation;   
+    });
 }
 
 gltfAnimation.prototype.getName = function() {
@@ -512,6 +520,14 @@ gltfAnimation.prototype.getDuration = function() {
 
 gltfAnimation.prototype.__setTime = function(time) {
     this.__time = this.__lastTime = time;
+}
+
+gltfAnimation.prototype.setPivot = function(x, y, z) {
+    this.__pivot.set(x, y, z);
+}
+
+gltfAnimation.prototype.getPivot = function() {
+    return new glVector3f(this.__pivot);
 }
 
 gltfAnimation.__updateID = 0;
@@ -561,12 +577,17 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
     ++gltfAnimation.__updateID;
 
     this.__time = Math.min(Math.max(time, 0.0), this.getDuration());
+    if(this.__speed < 0.0) time = this.getDuration() - time;
+    
+    if(shouldUpdateAnimationEvents) this.__updateEvents();
+
+    let pivotTransform = glMatrix4x4f.translationMatrix(glVector3f.flip(glVector3f.add(this.__animator.__pivot, this.__pivot)));
     
     for(let i = 0, e = this.__animation.channels.length; i != e; ++i)
     {
         let channel = this.__animation.channels[i];
         let sampler = channel.sampler;
-        let target = channel.target;
+        let target  = channel.target;
 
         if(sampler.__updateID != gltfAnimation.__updateID)
         {
@@ -651,11 +672,9 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
     for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
     {
         for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
-            updateAnimationMatrices(this.__animator.__nodes, nodes[k], nodes[k].matrix);
+            updateAnimationMatrices(this.__animator.__nodes, nodes[k], glMatrix4x4f.mul(pivotTransform, nodes[k].matrix));
         }
     }
-
-    if(shouldUpdateAnimationEvents) this.__updateEvents();
 }
 
 gltfAnimation.prototype.__updateEvents = function()
@@ -759,6 +778,8 @@ let glTFAnimator = function(glTF)
     this.__animationMatricesLastFrame = [];
     this.__bonesMatricesCurrentFrame = [];
     this.__bonesMatricesLastFrame = [];
+
+    this.__pivot  = new glVector3f(0.0);
     this.__paused = false;
     this.__time   = 0.0;
 
@@ -778,7 +799,7 @@ glTFAnimator.prototype.createSubAnimation = function(name, baseAnimation, timeSt
     if(typeof baseAnimation === "string" || baseAnimation instanceof String) baseAnimation = this.getAnimation(baseAnimation);
     if(baseAnimation == null) return null;
 
-    let animation = baseAnimation.slice(timeStart, timeEnd);
+    let animation = baseAnimation.__slice(timeStart, timeEnd);
     animation.__name = name;
 
     this.__animations.set(name, animation);
@@ -983,6 +1004,14 @@ glTFAnimator.prototype.rewind = function()
         this.__resetAnimationMatrices();
         this.__forceUpdate();
     }
+}
+
+glTFAnimator.prototype.setPivot = function(x, y, z) {
+    this.__pivot.set(x, y, z);
+}
+
+glTFAnimator.prototype.getPivot = function() {
+    return new glVector3f(this.__pivot);
 }
 
 glTFAnimator.prototype.createInput = function() {
