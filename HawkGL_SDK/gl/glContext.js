@@ -73,23 +73,22 @@ let glContext = function(canvasID)
     this.__shadingGlobalConstants = "";
     this.__shadingGlobalConstantsLineCount = 0;
     
-    this.__reservedUniformBlockUnits = 2;
     // let maxUniformBlockUnits = this.__gl.getParameter(this.__gl.MAX_UNIFORM_BUFFER_BINDINGS);
 
     this.__standardUniformsBlock  = new glUniformBlock(this, "glStandardUniformsBlock");
     this.__animationUniformsBlock = new glUniformBlock(this, "glAnimationUniformsBlock");
 
-    this.__standardUniformsBlock.glModelViewProjectionMatrix  = this.createStandardUniformMat4("glModelViewProjectionMatrix",          glContext.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glProjectionMatrix           = this.createStandardUniformMat4("glProjectionMatrix",                   glContext.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glModelViewMatrix            = this.createStandardUniformMat4("glModelViewMatrix",                    glContext.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glNormalMatrix               = this.createStandardUniformMat3("glNormalMatrix",                       glContext.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glTime                       = this.createStandardUniformFloat("glTime",                              glContext.Precision.MEDIUMP, 0.0);
-    this.__standardUniformsBlock.glIsAnimationActive          = this.createStandardUniformInt("glIsAnimationActive",                   glContext.Precision.LOWP,    0);
+    this.__standardUniformsBlock.glModelViewProjectionMatrix  = this.__standardUniformsBlock.createUniformMat4("glModelViewProjectionMatrix", glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glProjectionMatrix           = this.__standardUniformsBlock.createUniformMat4("glProjectionMatrix",          glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glModelViewMatrix            = this.__standardUniformsBlock.createUniformMat4("glModelViewMatrix",           glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glNormalMatrix               = this.__standardUniformsBlock.createUniformMat3("glNormalMatrix",              glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glTime                       = this.__standardUniformsBlock.createUniformFloat("glTime",                     glUniformBlock.Precision.MEDIUMP, 0.0);
+    this.__standardUniformsBlock.glIsAnimationActive          = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",          glUniformBlock.Precision.LOWP,    0);
     
-    this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glContext.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glContext.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glBonesMatricesCurrentFrame     = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glContext.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glBonesMatricesLastFrame        = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glContext.Precision.MEDIUMP, 256, null);
+    this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 256, null);
+    this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 256, null);
+    this.__animationUniformsBlock.glBonesMatricesCurrentFrame     = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.MEDIUMP, 256, null);
+    this.__animationUniformsBlock.glBonesMatricesLastFrame        = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.MEDIUMP, 256, null);
     
     this.__standardUniformsBlock.bind((this.__standardUniformsBlockUnitID   = -1));
     this.__animationUniformsBlock.bind((this.__animationUniformsBlockUnitID = -2));
@@ -250,7 +249,14 @@ let glContext = function(canvasID)
                                      "#endif                                                                                                                                     \n");
 }
 
-glContext.Precision = Object.freeze({"LOWP":"lowp", "MEDIUMP":"mediump", "HIGHP":"highp"});
+glContext.__reservedUniformBlockUnits = 2;
+
+glContext.__positionAttribLocation          = 0;
+glContext.__texCoordAttribLocation          = 1;
+glContext.__normalAttribLocation            = 2;
+glContext.__bonesIndicesAttribLocation      = 3;
+glContext.__bonesWeightsAttribLocation      = 4;
+glContext.__animationMatrixIDAttribLocation = 5;
 
 glContext.__getRootPath = function()
 {
@@ -622,13 +628,6 @@ glContext.prototype.getMaxSamplesMSAA = function() {
     return this.getGL().getParameter(this.getGL().MAX_SAMPLES);
 }
 
-glContext.__positionAttribLocation          = 0;
-glContext.__texCoordAttribLocation          = 1;
-glContext.__normalAttribLocation            = 2;
-glContext.__bonesIndicesAttribLocation      = 3;
-glContext.__bonesWeightsAttribLocation      = 4;
-glContext.__animationMatrixIDAttribLocation = 5;
-
 glContext.prototype.__bindProgramStandardAttributes = function(programID)
 {
     let gl = this.getGL();
@@ -645,70 +644,6 @@ glContext.prototype.__bindProgramStandardUniformsBlock = function(program)
 {
     program.createUniformBlock(this.__standardUniformsBlock.getName(),  this.__standardUniformsBlockUnitID);
     program.createUniformBlock(this.__animationUniformsBlock.getName(), this.__animationUniformsBlockUnitID);
-}
-
-glContext.prototype.createStandardUniformInt = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformInt(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayInt = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayInt(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformFloat = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformFloat(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayFloat = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayFloat(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformVec2 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformVec2(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayVec2 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayVec2(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformVec3 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformVec3(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayVec3 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayVec3(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformVec4 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformVec4(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayVec4 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayVec4(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformMat2 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformMat2(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayMat2 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayMat2(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformMat3 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformMat3(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayMat3 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayMat3(uniformName, precision, size, array);
-}
-
-glContext.prototype.createStandardUniformMat4 = function(uniformName, precision, value) {
-    return this.__standardUniformsBlock.createUniformMat4(uniformName, precision, value);
-}
-
-glContext.prototype.createStandardUniformArrayMat4 = function(uniformName, precision, size, array) {
-    return this.__standardUniformsBlock.createUniformArrayMat4(uniformName, precision, size, array);
 }
 
 glContext.prototype.createShadingGlobalConstant = function(source)
@@ -1189,7 +1124,7 @@ glContext.prototype.getActiveUniformBuffer = function() {
 }
 
 glContext.prototype.getActiveUniformBlock = function(unitID) {
-    return this.__activeUniformBlocks[unitID + this.__reservedUniformBlockUnits];
+    return this.__activeUniformBlocks[unitID + glContext.__reservedUniformBlockUnits];
 }
 
 glContext.prototype.isUniformBlockBound = function(unitID, uniformBlock) {
@@ -1197,7 +1132,7 @@ glContext.prototype.isUniformBlockBound = function(unitID, uniformBlock) {
 }
 
 glContext.prototype.bindUniformBlock = function(unitID, uniformBlock) {
-    if(!this.isUniformBlockBound(unitID, uniformBlock)) this.__gl.bindBufferBase(this.__gl.UNIFORM_BUFFER, unitID + this.__reservedUniformBlockUnits, (this.__activeUniformBlocks[unitID + this.__reservedUniformBlockUnits] = uniformBlock).__uniformBufferObject);
+    if(!this.isUniformBlockBound(unitID, uniformBlock)) this.__gl.bindBufferBase(this.__gl.UNIFORM_BUFFER, unitID + glContext.__reservedUniformBlockUnits, (this.__activeUniformBlocks[unitID + glContext.__reservedUniformBlockUnits] = uniformBlock).__uniformBufferObject);
 }
 
 glContext.prototype.unbindUniformBlockUnit = function(unitID) {

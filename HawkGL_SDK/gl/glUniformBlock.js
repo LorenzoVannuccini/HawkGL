@@ -35,6 +35,8 @@ let glUniformBlock = function(ctx, name)
     this.__didCompile = false;
 }
 
+glUniformBlock.Precision = Object.freeze({"LOWP":"lowp", "MEDIUMP":"mediump", "HIGHP":"highp"});
+
 glUniformBlock.__std140ArrayInt16 = function(data, length)
 {
     if(length == null) length = data.length;

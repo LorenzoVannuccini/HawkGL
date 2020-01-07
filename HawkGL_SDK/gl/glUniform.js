@@ -114,15 +114,15 @@ glUniformBlockIndex.prototype.__bindUniformLocation = function() {
 }
 
 glUniformBlockIndex.prototype.set = function(value) {
-    this.__setClientData([value]);
+    this.__setClientData([(value + glContext.__reservedUniformBlockUnits)]);
 }
 
 glUniformBlockIndex.prototype.get = function() {
-    return this.__clientData[0];
+    return (this.__clientData[0] - glContext.__reservedUniformBlockUnits);
 }
 
 glUniformBlockIndex.prototype.__sendToGPU = function() {
-    this.__ctx.uniformBlockBinding(this.__program.getProgramID(), this.__locationID, (this.__clientData[0] + this.__program.__ctx.__reservedUniformBlockUnits));
+    this.__ctx.uniformBlockBinding(this.__program.getProgramID(), this.__locationID, this.__clientData[0]);
 }
 
 // -------------------------------------------------------------------------------------------
