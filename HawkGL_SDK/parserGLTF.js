@@ -158,7 +158,7 @@ MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
     this.matrix.__m[13] = v.y;
     this.matrix.__m[14] = v.z;
     this.matrix.__m[15] = 1.0;
-    
+
     if(this.scale.x != 1.0 || this.scale.y != 1.0 || this.scale.z != 1.0) this.matrix.mul(glMatrix4x4f.scaleMatrix(this.scale));
 }
 
@@ -637,10 +637,9 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 
     let self = this;
     let animationID = 0;
-    function updateAnimationMatrices(nodes, node, nodeTransform)
+    function updateAnimationMatrices(nodes, node, parentTransform)
     {
-        node.globalTransform = new glMatrix4x4f(nodeTransform);
-
+        node.globalTransform = glMatrix4x4f.mul(parentTransform, node.matrix);
         if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
         
         if(node.skinned)
@@ -658,7 +657,7 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 
                     let tmpMat4 = glMatrix4x4f.mul(nodes[jointNode.nodeID].globalTransform, skin.inverseBindMatrix[i]);
                     self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
-
+                   
                     // if (skin.skeleton !== null) {
                     //     mat4.mul(tmpMat4, inverseSkeletonRootMat4, tmpMat4);
                     // }
@@ -666,13 +665,13 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
             }
         }
         
-        for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(nodes, node.children[i], glMatrix4x4f.mul(nodeTransform, node.children[i].matrix));
+        for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(nodes, node.children[i], node.globalTransform);
     }
     
     for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
     {
         for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
-            updateAnimationMatrices(this.__animator.__nodes, nodes[k], glMatrix4x4f.mul(pivotTransform, nodes[k].matrix));
+            updateAnimationMatrices(this.__animator.__nodes, nodes[k], pivotTransform);
         }
     }
 }
@@ -1178,10 +1177,13 @@ glTFLoader.prototype._postprocess = function ()
             let normalsBuffer   = MinimalGLTFLoader.__getAccessorData(primitive.attributes.NORMAL);
             
             let joints0Buffer   = MinimalGLTFLoader.__getAccessorData(primitive.attributes.JOINTS_0);
-            let weights0Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_0);
-            // let joints1Buffer   = MinimalGLTFLoader.__getAccessorData(primitive.attributes.JOINTS_1);
-            // let weights1Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_1);
+            let joints1Buffer   = MinimalGLTFLoader.__getAccessorData(primitive.attributes.JOINTS_1);
             
+            let weights0Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_0);
+            let weights1Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_1);
+            
+            if(joints1Buffer != null || weights1Buffer != null) console.warning("glTFLoader Skinning Warning: maximum supported bones per vertex is 4");
+
             let indices = MinimalGLTFLoader.__getAccessorData(this.glTF.accessors[primitive.indices]);
  
             if(indices == null) 
@@ -1220,6 +1222,8 @@ glTFLoader.prototype._postprocess = function ()
                     vertex.bonesWeights.y = weights0Buffer[index * 4 + 1];
                     vertex.bonesWeights.z = weights0Buffer[index * 4 + 2];
                     vertex.bonesWeights.w = weights0Buffer[index * 4 + 3];
+
+                    vertex.bonesWeights.normalize();
                 }
                 
                 if(joints0Buffer != null)
@@ -1366,11 +1370,13 @@ glTFLoader.prototype._postprocess = function ()
     let mappedGroups = new Map();
     
     let animationMatrixID = 0;
-    function processNode(glTF, node, nodeTransform, animated)
+    function processNode(glTF, node, parentTransform, animated)
     {
+        node.globalTransform = glMatrix4x4f.mul(parentTransform, node.matrix);
+
         if(animated) node.animated = true;
-        
         node.hasMesh = (node.mesh != null && node.mesh.triangulated);
+
         if(node.hasMesh)
         {
             for(let i = 0, e = node.mesh.primitives.length; i != e; ++i)
@@ -1406,12 +1412,12 @@ glTFLoader.prototype._postprocess = function ()
                         if(vertexHasAnimations) vertex.animationMatrixID = animationMatrixID;
                     } 
 
-                    mesh.transform(nodeTransform);
+                    mesh.transform(node.globalTransform);
                     group.mesh.add(mesh);  
                 }
             }
 
-            node.inverseBindMatrix = glMatrix4x4f.inverse(nodeTransform);
+            node.inverseBindMatrix = glMatrix4x4f.inverse(node.globalTransform);
             if(node.animated) ++animationMatrixID;
         }
         
@@ -1423,11 +1429,11 @@ glTFLoader.prototype._postprocess = function ()
         delete node.extras; 
         delete node.extensions; 
         
-        for(let i = 0, e = node.children.length; i != e; ++i) processNode(glTF, node.children[i], glMatrix4x4f.mul(nodeTransform, node.children[i].matrix), node.animated);
+        for(let i = 0, e = node.children.length; i != e; ++i) processNode(glTF, node.children[i], node.globalTransform, node.animated);
     }
 
-    for(let i = 0, len = this.glTF.scenes.length; i != len; ++i) {
-        for(let nodes = this.glTF.scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) processNode(this.glTF, nodes[k], nodes[k].matrix);
+    for(let i = 0, len = this.glTF.scenes.length, identityMatrix = glMatrix4x4f.identityMatrix(); i != len; ++i) {
+        for(let nodes = this.glTF.scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) processNode(this.glTF, nodes[k], identityMatrix);
     }
 
     this.groups = [];
