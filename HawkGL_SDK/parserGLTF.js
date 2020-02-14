@@ -72,6 +72,8 @@ MinimalGLTFLoader.Scene = function (gltf, s)
 {
     this.name = s.name !== undefined ? s.name : null;
     this.nodes = new Array(s.nodes.length);    // root node object of this scene
+    this.matrices = new Array(s.nodes.length);
+    
     for (let i = 0, len = s.nodes.length; i < len; i++) {
         this.nodes[i] = gltf.nodes[s.nodes[i]];
     }
@@ -86,6 +88,8 @@ MinimalGLTFLoader.Node = function (loader, n, nodeID)
     this.nodeID = nodeID;
     
     this.matrix = new glMatrix4x4f();
+    this.inverseBindMatrix = glMatrix4x4f.identityMatrix();
+
     this.getTransformMatrixFromTRS(n.translation, n.rotation, n.scale);
     if(n.hasOwnProperty('matrix')) this.matrix.set(n.matrix);  
     
@@ -120,8 +124,9 @@ MinimalGLTFLoader.Node.prototype.resetTransform = function()
 
 MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
 {
-    let q = this.rotation;
     let v = this.translation;
+    let q = this.rotation;
+    let s = this.scale;
 
     let x = q.x;
     let y = q.y;
@@ -141,25 +146,23 @@ MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
     let wx = w * x2;
     let wy = w * y2;
     let wz = w * z2;
-    
-    this.matrix.__m[0] = (1.0 - (yy + zz)) * this.scale.x;
-    this.matrix.__m[1] = xy + wz;
-    this.matrix.__m[2] = xz - wy;
+
+    this.matrix.__m[0] = (1.0 - (yy + zz)) * s.x;
+    this.matrix.__m[1] = (xy + wz) * s.x;
+    this.matrix.__m[2] = (xz - wy) * s.x;
     this.matrix.__m[3] = 0.0;
-    this.matrix.__m[4] = xy - wz;
-    this.matrix.__m[5] = (1.0 - (xx + zz)) * this.scale.y;
-    this.matrix.__m[6] = yz + wx;
+    this.matrix.__m[4] = (xy - wz) * s.y;
+    this.matrix.__m[5] = (1.0 - (xx + zz)) * s.y;
+    this.matrix.__m[6] = (yz + wx) * s.y;
     this.matrix.__m[7] = 0.0;
-    this.matrix.__m[8] = xz + wy;
-    this.matrix.__m[9] = yz - wx;
-    this.matrix.__m[10] = (1.0 - (xx + yy)) * this.scale.z;
+    this.matrix.__m[8] = (xz + wy) * s.z;
+    this.matrix.__m[9] = (yz - wx) * s.z;
+    this.matrix.__m[10] = (1.0 - (xx + yy)) * s.z;
     this.matrix.__m[11] = 0.0;
     this.matrix.__m[12] = v.x;
     this.matrix.__m[13] = v.y;
     this.matrix.__m[14] = v.z;
     this.matrix.__m[15] = 1.0;
-
-    if(this.scale.x != 1.0 || this.scale.y != 1.0 || this.scale.z != 1.0) this.matrix.mul(glMatrix4x4f.scaleMatrix(this.scale));
 }
 
 MinimalGLTFLoader.Mesh = function (loader, m, meshID)
@@ -557,7 +560,7 @@ gltfAnimation.prototype.__createTransitionPose = function(transitionTime)
             node.transitionPose_translation = new glVector3f(node.translation);
             node.transitionPose_rotation = new glVector4f(node.rotation);
             node.transitionPose_scale = new glVector3f(node.scale);
-
+            
             node.transitionTime = transitionTime;
         }
 
@@ -581,8 +584,24 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
     
     if(shouldUpdateAnimationEvents) this.__updateEvents();
 
-    let pivotTransform = glMatrix4x4f.translationMatrix(glVector3f.flip(glVector3f.add(this.__animator.__pivot, this.__pivot)));
-    
+    let targetPivot = glVector3f.add(this.__animator.__pivot, this.__pivot);
+
+    if(this.__animator.pivotTransitionTime > time)
+    {
+        let t = (time / this.__animator.pivotTransitionTime);
+
+        this.__animator.__pivotAnimation.set((this.__animator.pivotTransitionPose.x * (1.0 - t) + targetPivot.x * t),
+                                             (this.__animator.pivotTransitionPose.y * (1.0 - t) + targetPivot.y * t),
+                                             (this.__animator.pivotTransitionPose.z * (1.0 - t) + targetPivot.z * t));                 
+    } 
+    else
+    {
+        this.__animator.pivotTransitionTime = 0.0;
+        this.__animator.__pivotAnimation.set(targetPivot);
+    }
+
+    let pivotTransform = glMatrix4x4f.translationMatrix(glVector3f.flip(this.__animator.__pivotAnimation));
+
     for(let i = 0, e = this.__animation.channels.length; i != e; ++i)
     {
         let channel = this.__animation.channels[i];
@@ -637,10 +656,12 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 
     let self = this;
     let animationID = 0;
-    function updateAnimationMatrices(nodes, node, parentTransform)
+    function updateAnimationMatrices(node, parentTransform, sceneMatrices)
     {
-        node.globalTransform = glMatrix4x4f.mul(parentTransform, node.matrix);
-        if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(node.globalTransform, node.inverseBindMatrix);
+        let matrix = sceneMatrices[node.nodeID];
+        matrix.set(glMatrix4x4f.mul(parentTransform, node.matrix));
+        
+        if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(pivotTransform, glMatrix4x4f.mul(matrix, node.inverseBindMatrix));
         
         if(node.skinned)
         {
@@ -648,14 +669,16 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
     
             if(skin.__updateID != gltfAnimation.__updateID)
             {
-                let joints = skin.joints;
                 skin.__updateID = gltfAnimation.__updateID;
+                let inverseTransform = glMatrix4x4f.inverse(glMatrix4x4f.mul(matrix, node.inverseBindMatrix));
                 
-                for(let i = 0, len = joints.length; i < len; ++i)
+                for(let joints = skin.joints, i = 0, len = joints.length; i < len; ++i)
                 {
                     let jointNode = joints[i];
 
-                    let tmpMat4 = glMatrix4x4f.mul(nodes[jointNode.nodeID].globalTransform, skin.inverseBindMatrix[i]);
+                    let tmpMat4 = glMatrix4x4f.mul(glMatrix4x4f.mul(pivotTransform, sceneMatrices[jointNode.nodeID]), skin.inverseBindMatrix[i]);
+                    tmpMat4 = glMatrix4x4f.mul(inverseTransform, tmpMat4);
+
                     self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
                    
                     // if (skin.skeleton !== null) {
@@ -664,14 +687,13 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
                 }
             }
         }
-        
-        for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(nodes, node.children[i], node.globalTransform);
+
+        for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(node.children[i], matrix, sceneMatrices);
     }
     
-    for(let i = 0, len = this.__animator.__scenes.length; i != len; ++i)
-    {
-        for(let nodes = this.__animator.__scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) {
-            updateAnimationMatrices(this.__animator.__nodes, nodes[k], pivotTransform);
+    for(let i = 0, identityMatrix = glMatrix4x4f.identityMatrix(), len = this.__animator.__scenes.length; i != len; ++i) {
+        for(let scene = this.__animator.__scenes[i], nodes = scene.nodes, k = 0, e = nodes.length; k != e; ++k) {
+            updateAnimationMatrices(nodes[k], identityMatrix, scene.matrices);
         }
     }
 }
@@ -778,6 +800,7 @@ let glTFAnimator = function(glTF)
     this.__bonesMatricesCurrentFrame = [];
     this.__bonesMatricesLastFrame = [];
 
+    this.__pivotAnimation = new glVector3f(0.0);
     this.__pivot  = new glVector3f(0.0);
     this.__paused = false;
     this.__time   = 0.0;
@@ -789,7 +812,22 @@ let glTFAnimator = function(glTF)
 
 glTFAnimator.RepeatMode = Object.freeze({"REWIND_REPEAT":-2, "REPEAT":-1, "NO_REPEAT":0});
 
-glTFAnimator.prototype.__createAnimation = function(animation) {
+glTFAnimator.prototype.__createAnimation = function(animation)
+{
+    if(animation.name == null) animation.name = "untitled";
+        
+    let collisions = 0;
+    let checkAnimationName;
+
+    do
+    {
+        checkAnimationName = animation.name;
+        if(collisions > 0) checkAnimationName += (collisions + 1);
+
+    } while(this.getAnimation(checkAnimationName) != null);
+
+    animation.name = checkAnimationName;
+
     this.__animations.set(animation.name, new gltfAnimation(this, animation));
 }
 
@@ -828,8 +866,14 @@ glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish,
 {
     if(typeof animation === "string" || animation instanceof String) animation = this.getAnimation(animation);
     
-    transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.2), 0.0), animation.getDuration() * 0.5);
-    if(transitionTime > 0.0) animation.__createTransitionPose(transitionTime);
+    transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.325), 0.0), animation.getDuration() * 0.5);
+    if(transitionTime > 0.0)
+    {
+        animation.__createTransitionPose(transitionTime);
+        
+        this.pivotTransitionPose = new glVector3f(this.__pivotAnimation);   
+        this.pivotTransitionTime = transitionTime; 
+    }
     
     this.__activeAnimation = animation;
     this.__onFinishCallback = onFinish;
@@ -1370,9 +1414,12 @@ glTFLoader.prototype._postprocess = function ()
     let mappedGroups = new Map();
     
     let animationMatrixID = 0;
-    function processNode(glTF, node, parentTransform, animated)
+    function processNode(node, parentTransform, sceneMatrices, animated)
     {
-        node.globalTransform = glMatrix4x4f.mul(parentTransform, node.matrix);
+        let matrix = sceneMatrices[node.nodeID];
+        if(matrix == null) matrix = sceneMatrices[node.nodeID] = new glMatrix4x4f();
+
+        matrix.set(glMatrix4x4f.mul(parentTransform, node.matrix));
 
         if(animated) node.animated = true;
         node.hasMesh = (node.mesh != null && node.mesh.triangulated);
@@ -1393,31 +1440,38 @@ glTFLoader.prototype._postprocess = function ()
                     if(group == null) mappedGroups.set(groupID, (group = groupInfo));
                     
                     let mesh = new glMesh(null, primitive.vertices);
+                    let shouldTransformMesh = true;
 
-                    if(node.skinned || node.animated) for(let i = 0, e = mesh.__vertices.length; i != e; ++i)
+                    if(node.skinned || node.animated)
                     {
-                        let vertex = mesh.__vertices[i];
-                        
-                        let vertexHasAnimations = node.animated;
-                        let vertexHasSkinning = (node.skinned && vertex.bonesIndices[0] >= 0);
-
-                        if(vertexHasSkinning)
+                        for(let i = 0, e = mesh.__vertices.length; i != e; ++i)
                         {
-                            vertex.bonesIndices[0] += node.skin.baseMatrixID;
-                            vertex.bonesIndices[1] += node.skin.baseMatrixID;
-                            vertex.bonesIndices[2] += node.skin.baseMatrixID;
-                            vertex.bonesIndices[3] += node.skin.baseMatrixID;
-                        }
+                            let vertex = mesh.__vertices[i];
+                            
+                            let vertexHasAnimations = node.animated;
+                            let vertexHasSkinning = (node.skinned && vertex.bonesIndices[0] >= 0);
 
-                        if(vertexHasAnimations) vertex.animationMatrixID = animationMatrixID;
-                    } 
+                            if(vertexHasSkinning)
+                            {
+                                vertex.bonesIndices[0] += node.skin.baseMatrixID;
+                                vertex.bonesIndices[1] += node.skin.baseMatrixID;
+                                vertex.bonesIndices[2] += node.skin.baseMatrixID;
+                                vertex.bonesIndices[3] += node.skin.baseMatrixID;
+                            }
 
-                    mesh.transform(node.globalTransform);
+                            if(vertexHasAnimations) vertex.animationMatrixID = animationMatrixID;
+                        } 
+
+                        if(glMatrix4x4f.invertible(matrix)) node.inverseBindMatrix = glMatrix4x4f.inverse(matrix);
+                        else shouldTransformMesh = false;
+                    }
+                   
+                    if(shouldTransformMesh) mesh.transform(matrix);
+
                     group.mesh.add(mesh);  
                 }
             }
 
-            node.inverseBindMatrix = glMatrix4x4f.inverse(node.globalTransform);
             if(node.animated) ++animationMatrixID;
         }
         
@@ -1429,11 +1483,11 @@ glTFLoader.prototype._postprocess = function ()
         delete node.extras; 
         delete node.extensions; 
         
-        for(let i = 0, e = node.children.length; i != e; ++i) processNode(glTF, node.children[i], node.globalTransform, node.animated);
+        for(let i = 0, e = node.children.length; i != e; ++i) processNode(node.children[i], matrix, sceneMatrices, node.animated);
     }
 
     for(let i = 0, len = this.glTF.scenes.length, identityMatrix = glMatrix4x4f.identityMatrix(); i != len; ++i) {
-        for(let nodes = this.glTF.scenes[i].nodes, k = 0, e = nodes.length; k != e; ++k) processNode(this.glTF, nodes[k], identityMatrix);
+        for(let scene = this.glTF.scenes[i], nodes = scene.nodes, k = 0, e = nodes.length; k != e; ++k) processNode(nodes[k], identityMatrix, scene.matrices);
     }
 
     this.groups = [];

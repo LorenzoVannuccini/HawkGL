@@ -261,6 +261,30 @@ glMatrix4x4f.mul = function(a, b) {
     return (new glMatrix4x4f(a)).mul(b);
 }
 
+glMatrix4x4f.invertible = function(matrix)
+{
+    let m = matrix.__m;
+
+    let d12 = (m[2]  * m[7]  - m[3]  * m[6]);
+    let d13 = (m[2]  * m[11] - m[3]  * m[10]);
+    let d23 = (m[6]  * m[11] - m[7]  * m[10]);
+    let d24 = (m[6]  * m[15] - m[7]  * m[14]);
+    let d34 = (m[10] * m[15] - m[11] * m[14]);
+    let d41 = (m[14] * m[3]  - m[15] * m[2]);
+    
+    let result = new Array(4);
+
+    result[0] =  (m[5] * d34 - m[9] * d24 + m[13] * d23);
+    result[1] = -(m[1] * d34 + m[9] * d41 + m[13] * d13);
+    result[2] =  (m[1] * d24 + m[5] * d41 + m[13] * d12);
+    result[3] = -(m[1] * d23 - m[5] * d13 + m[9]  * d12);
+
+    let det = m[0] * result[0] + m[4] * result[1] + m[8] * result[2] + m[12] * result[3];
+    let epsilon = 0.0000001;
+
+    return (Math.abs(det) > epsilon);
+}
+
 glMatrix4x4f.inverse = function(matrix)
 {
     let m = matrix.__m;
@@ -272,7 +296,8 @@ glMatrix4x4f.inverse = function(matrix)
     let d34 = (m[10] * m[15] - m[11] * m[14]);
     let d41 = (m[14] * m[3]  - m[15] * m[2]);
     
-    let result = new Array(16);
+    let inverseMatrix = new glMatrix4x4f();
+    let result = inverseMatrix.__m;
 
     result[0] =  (m[5] * d34 - m[9] * d24 + m[13] * d23);
     result[1] = -(m[1] * d34 + m[9] * d41 + m[13] * d13);
@@ -280,7 +305,9 @@ glMatrix4x4f.inverse = function(matrix)
     result[3] = -(m[1] * d23 - m[5] * d13 + m[9]  * d12);
 
     let det = m[0] * result[0] + m[4] * result[1] + m[8] * result[2] + m[12] * result[3];
-    if(det != 0.0)
+    let epsilon = 0.0000001;
+
+    if(Math.abs(det) > epsilon)
     {
        let invDet = 1.0 / det;
        
@@ -310,8 +337,8 @@ glMatrix4x4f.inverse = function(matrix)
        result[14] = -(m[2] * d24 + m[6]  * d41 + m[14] * d12) * invDet;
        result[15] =  (m[2] * d23 - m[6]  * d13 + m[10] * d12) * invDet;
 
-       return new glMatrix4x4f(result);
-
+       return inverseMatrix;
+       
     } else return glMatrix4x4f.identityMatrix();
 }
 
