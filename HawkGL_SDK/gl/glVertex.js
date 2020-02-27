@@ -84,6 +84,38 @@ glVertex.prototype.toFloat32Array = function()
     return rawData;
 }
 
+glVertex.fromFloat32Array = function(array, offset)
+{
+    if(offset == null) offset = 0;
+    
+    let vertex = new glVertex();
+
+    vertex.position.x = array[offset + 0]; 
+    vertex.position.y = array[offset + 1]; 
+    vertex.position.z = array[offset + 2]; 
+
+    vertex.texCoord.x = array[offset + 3];         
+    vertex.texCoord.y = array[offset + 4];             
+    
+    vertex.normal.x = array[offset + 5];     
+    vertex.normal.y = array[offset + 6];     
+    vertex.normal.z = array[offset + 7];         
+    
+    vertex.bonesWeights.x = array[offset + 8];     
+    vertex.bonesWeights.y = array[offset + 9]; 
+    vertex.bonesWeights.z = array[offset + 10]; 
+    vertex.bonesWeights.w = array[offset + 11];     
+    
+    vertex.bonesIndices[0] = array[offset + 12];     
+    vertex.bonesIndices[1] = array[offset + 13];     
+    vertex.bonesIndices[2] = array[offset + 14];     
+    vertex.bonesIndices[3] = array[offset + 15];     
+    
+    vertex.animationMatrixID = array[offset + 16]; 
+    
+    return vertex;
+}
+
 glVertex.prototype.toArrayBuffer = function(buffer, byteOffset)
 {
     if(buffer == null) buffer = new ArrayBuffer(glVertex.sizeBytes());
@@ -109,14 +141,47 @@ glVertex.prototype.toArrayBuffer = function(buffer, byteOffset)
     view.setUint8(offset, Math.round((this.bonesWeights.z / weightSum) * 255)); offset += 1;
     view.setUint8(offset, Math.round((this.bonesWeights.w / weightSum) * 255)); offset += 1;
     
-    view.setUint8(offset, this.bonesIndices[0], true); offset += 1;
-    view.setUint8(offset, this.bonesIndices[1], true); offset += 1;
-    view.setUint8(offset, this.bonesIndices[2], true); offset += 1;
-    view.setUint8(offset, this.bonesIndices[3], true); offset += 1;
+    view.setUint8(offset, this.bonesIndices[0]); offset += 1;
+    view.setUint8(offset, this.bonesIndices[1]); offset += 1;
+    view.setUint8(offset, this.bonesIndices[2]); offset += 1;
+    view.setUint8(offset, this.bonesIndices[3]); offset += 1;
 
-    view.setUint8(offset, this.animationMatrixID, true); offset += 1;
+    view.setUint8(offset, this.animationMatrixID); offset += 1;
 
     return buffer;
+}
+
+glVertex.fromArrayBuffer = function(buffer, byteOffset)
+{
+    let vertex = new glVertex();
+    let view = new DataView(buffer, ((byteOffset != null) ? byteOffset : 0), glVertex.sizeBytes());    
+
+    let offset = 0;
+
+    vertex.position.x = view.getFloat32(offset, true); offset += 4;
+    vertex.position.y = view.getFloat32(offset, true); offset += 4;
+    vertex.position.z = view.getFloat32(offset, true); offset += 4;
+
+    vertex.texCoord.x = view.getFloat32(offset, true); offset += 4;
+    vertex.texCoord.y = view.getFloat32(offset, true); offset += 4;
+
+    vertex.normal.x = view.getFloat32(offset, true); offset += 4;
+    vertex.normal.y = view.getFloat32(offset, true); offset += 4;
+    vertex.normal.z = view.getFloat32(offset, true); offset += 4;
+
+    vertex.bonesWeights.y = view.getUint8(offset); offset += 1;
+    vertex.bonesWeights.z = view.getUint8(offset); offset += 1;
+    vertex.bonesWeights.x = view.getUint8(offset); offset += 1;
+    vertex.bonesWeights.w = view.getUint8(offset); offset += 1;
+    
+    vertex.bonesIndices[0] = view.getUint8(offset); offset += 1;
+    vertex.bonesIndices[1] = view.getUint8(offset); offset += 1;
+    vertex.bonesIndices[2] = view.getUint8(offset); offset += 1;
+    vertex.bonesIndices[3] = view.getUint8(offset); offset += 1;
+
+    vertex.animationMatrixID = view.getUint8(offset); offset += 1;
+
+    return vertex;
 }
 
 glVertex.prototype.toHash = function()

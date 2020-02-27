@@ -49,7 +49,11 @@ glVertexBuffer.prototype.unbind = function() {
 }
 
 glVertexBuffer.prototype.size = function() {
-    return this.__bufferData.length;
+    return (this.__bufferData.byteLength / glVertex.sizeBytes());
+}
+
+glVertexBuffer.prototype.at = function(index) {
+    return glVertex.fromArrayBuffer(this.__bufferData, index * glVertex.sizeBytes());
 }
 
 glVertexBuffer.prototype.free = function()
