@@ -168,6 +168,13 @@ glUniformBlock.prototype.compile = function()
     program = program.getProgramID();
 
     let uniformNames = Array.from(this.__uniforms.keys());
+    for(let i = 0, e = uniformNames.length; i != e; ++i)
+    {
+        let uniform = this.__uniforms.get(uniformNames[i]);
+        let isArray = (uniform.__elements != null);
+        
+        if(isArray) uniformNames[i] += "[0]";
+    }
     
     let uniformBlockLocationID = gl.getUniformBlockIndex(program, this.__name);
     let uniformBlockSizeBytes  = gl.getActiveUniformBlockParameter(program, uniformBlockLocationID, gl.UNIFORM_BLOCK_DATA_SIZE);
@@ -178,6 +185,7 @@ glUniformBlock.prototype.compile = function()
     let uniformIndices = gl.getUniformIndices(program, uniformNames);
     let uniformOffsets = gl.getActiveUniforms(program, uniformIndices, gl.UNIFORM_OFFSET);
     
+    uniformNames = Array.from(this.__uniforms.keys());
     for(let i = 0, e = uniformNames.length; i != e; ++i) 
     {
         let uniform = this.__uniforms.get(uniformNames[i]);
