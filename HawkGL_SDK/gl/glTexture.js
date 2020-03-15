@@ -356,3 +356,119 @@ glDepthTexture32F.prototype.set = function(w, h, data)
     this.setWrapMode(gl.CLAMP_TO_EDGE);
 }
 
+// -------------------------------------------------------------------------------------------
+
+let glTextureData = function(ctx, localSize, capacity)
+{
+    this.__ctx = ctx;
+    
+    this.__descriptor =
+    {
+        localSize: 0,
+        workGroupSize: 0,
+        workGroupSizeSquared: 0
+    };
+
+    this.__capacity = 0;
+
+    if(localSize == null) localSize = 1;
+    if(capacity  == null) capacity  = 1;
+    
+    this.setCapacity(localSize, capacity);
+}
+
+glTextureData.prototype.__createAttachment = null; // abstract
+
+glTextureData.prototype.__resize = function(w, h)
+{
+    if(this.__framebuffer != null) this.__framebuffer.free();
+
+    this.__framebuffer = new glFramebuffer(ctx, w, h);
+    this.__framebufferAttachment = this.__createAttachment();
+   
+    this.__framebufferAttachment.__renderTexture.getTextureID().__dataTexture = this;
+}
+
+glTextureData.prototype.setCapacity = function(localSize, requestCapacity)
+{
+    if(localSize != this.__descriptor.localSize || requestCapacity > this.__capacity)
+    {
+        let capacitySquared = nextPot(Math.sqrt(requestCapacity * localSize));
+        this.__capacity = Math.floor((capacitySquared * capacitySquared) / localSize);
+        this.__descriptor.localSize = localSize;
+        
+        this.__resize(capacitySquared, capacitySquared);
+    }
+}
+
+glTextureData.prototype.free = function()
+{
+    if(this.__framebuffer != null)
+    {
+        this.__framebuffer.free();
+        this.__framebuffer = null;
+    }
+}
+
+glTextureData.prototype.set = function(){}
+
+glTextureData.prototype.getWidth = function() {
+    return this.__framebufferAttachment.getWidth();
+}
+
+glTextureData.prototype.getHeight = function() {
+    return this.__framebufferAttachment.getHeight();
+}
+
+glTextureData.prototype.bind = function(unitID) {
+    this.__framebufferAttachment.bind(unitID);
+}
+
+glTextureData.prototype.unbind = function() {
+    this.__framebufferAttachment.unbind();
+}
+
+glTextureData.prototype.blit = function(filter) {
+    this.__framebufferAttachment.blit(((filter != null) ? filter : this.__ctx.getGL().NEAREST));
+}
+
+glTextureData.prototype.toImage = function(width, height, onLoad) {}
+glTextureData.prototype.toBase64 = function(width, height) {}
+
+// -------------------------------------------------------------------------------------------
+
+let glTextureData8 = function(ctx, localSize, capacity) {
+    glTextureData.call(this, ctx, localSize, capacity);
+}
+
+glTextureData8.prototype = Object.create(glTextureData.prototype);
+
+glTextureData8.prototype.__createAttachment = function() {
+    return this.__framebuffer.createColorAttachmentRGBA8();
+}
+
+// -------------------------------------------------------------------------------------------
+
+let glTextureData16F = function(ctx, localSize, capacity) {
+    glTextureData.call(this, ctx, localSize, capacity);
+}
+
+glTextureData16F.prototype = Object.create(glTextureData.prototype);
+
+glTextureData16F.prototype.__createAttachment = function() {
+    return this.__framebuffer.createColorAttachmentRGBA16F();
+}
+
+// -------------------------------------------------------------------------------------------
+
+let glTextureData32F = function(ctx, localSize, capacity) {
+    glTextureData.call(this, ctx, localSize, capacity);
+}
+
+glTextureData32F.prototype = Object.create(glTextureData.prototype);
+
+glTextureData32F.prototype.__createAttachment = function() {
+    return this.__framebuffer.createColorAttachmentRGBA32F();
+}
+
+// -------------------------------------------------------------------------------------------

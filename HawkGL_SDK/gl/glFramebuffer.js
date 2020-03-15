@@ -25,7 +25,9 @@ let glFramebufferAttachment = function(ctx, framebuffer, renderTexture)
 {
     this.__ctx = ctx;
 
-    this.__framebuffer = framebuffer;
+    this.__framebufferObject = framebuffer;
+    this.__framebuffer = this.__framebufferObject.__framebuffer;
+    
     this.__renderTexture = renderTexture;
     this.__shouldUpdateMipmap = true;
 }
@@ -100,6 +102,10 @@ glFramebufferAttachment.prototype.generateMipmap = function(enableAnisotropicFil
 {
     this.__renderTexture.generateMipmap(enableAnisotropicFiltering);
     this.__shouldUpdateMipmap = false;
+}
+
+glFramebufferAttachment.prototype.getFramebuffer = function() {
+    return this.__framebufferObject;
 }
 
 // -------------------------------------------------------------------------------------------
@@ -325,15 +331,15 @@ glFramebuffer.prototype.__createColorAttachment = function(attachment)
 }
 
 glFramebuffer.prototype.createColorAttachmentRGBA8 = function() {
-    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA8(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height));
+    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA8(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height));
 }
 
 glFramebuffer.prototype.createColorAttachmentRGBA16F = function() {
-    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA16F(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height));
+    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA16F(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height));
 }
 
 glFramebuffer.prototype.createColorAttachmentRGBA32F = function() {
-    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA32F(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height));
+    return this.__createColorAttachment(new glFramebufferColorAttachmentRGBA32F(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height));
 }
 
 glFramebuffer.prototype.__createDepthAttachment = function(attachment)
@@ -349,15 +355,15 @@ glFramebuffer.prototype.__createDepthAttachment = function(attachment)
 }
 
 glFramebuffer.prototype.createDepthAttachment16 = function(attachment) {
-    return this.__createDepthAttachment(new glFramebufferDepthAttachment16(this.__ctx, this.__framebuffer, this.__width, this.__height));  
+    return this.__createDepthAttachment(new glFramebufferDepthAttachment16(this.__ctx, this, this.__width, this.__height));  
 }
 
 glFramebuffer.prototype.createDepthAttachment24 = function(attachment) {
-    return this.__createDepthAttachment(new glFramebufferDepthAttachment24(this.__ctx, this.__framebuffer, this.__width, this.__height));  
+    return this.__createDepthAttachment(new glFramebufferDepthAttachment24(this.__ctx, this, this.__width, this.__height));  
 }
 
 glFramebuffer.prototype.createDepthAttachment32F = function(attachment) {
-    return this.__createDepthAttachment(new glFramebufferDepthAttachment32F(this.__ctx, this.__framebuffer, this.__width, this.__height));  
+    return this.__createDepthAttachment(new glFramebufferDepthAttachment32F(this.__ctx, this, this.__width, this.__height));  
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -369,8 +375,9 @@ let glRenderbufferAttachment = function(ctx, framebuffer, w, h, samples, interna
     this.__w = w;
     this.__h = h;
     
-    this.__framebuffer = framebuffer;
-
+    this.__framebufferObject = framebuffer;
+    this.__framebuffer = this.__framebufferObject.__framebuffer;
+    
     let gl = ctx.getGL();
     this.__renderbuffer = gl.createRenderbuffer();
     
@@ -392,6 +399,10 @@ glRenderbufferAttachment.prototype.getWidth = function() {
 
 glRenderbufferAttachment.prototype.getHeight = function() {
     return this.__h;
+}
+
+glRenderbufferAttachment.prototype.getRenderbuffer = function() {
+    return this.__framebufferObject;
 }
 
 glRenderbufferAttachment.prototype.__blit = function(x0, y0, x1, y1, mask, attachment, filter) 
@@ -525,15 +536,15 @@ glRenderbuffer.prototype.__createColorAttachment = function(attachment)
 }
 
 glRenderbuffer.prototype.createColorAttachmentRGBA8 = function() {
-    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA8(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
+    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA8(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
 }
 
 glRenderbuffer.prototype.createColorAttachmentRGBA16F = function() {
-    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA16F(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
+    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA16F(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
 }
 
 glRenderbuffer.prototype.createColorAttachmentRGBA32F = function() {
-    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA32F(this.__ctx, this.__framebuffer, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
+    return this.__createColorAttachment(new glRenderbufferColorAttachmentRGBA32F(this.__ctx, this, this.__colorAttachments.length, this.__width, this.__height, this.__nSamples));
 }
 
 glRenderbuffer.prototype.__createDepthAttachment = function(attachment)
@@ -549,13 +560,13 @@ glRenderbuffer.prototype.__createDepthAttachment = function(attachment)
 }
 
 glRenderbuffer.prototype.createDepthAttachment16 = function(attachment) {
-    return this.__createDepthAttachment(new glRenderbufferDepthAttachment16(this.__ctx, this.__framebuffer, this.__width, this.__height, this.__nSamples));  
+    return this.__createDepthAttachment(new glRenderbufferDepthAttachment16(this.__ctx, this, this.__width, this.__height, this.__nSamples));  
 }
 
 glRenderbuffer.prototype.createDepthAttachment24 = function(attachment) {
-    return this.__createDepthAttachment(new glRenderbufferDepthAttachment24(this.__ctx, this.__framebuffer, this.__width, this.__height, this.__nSamples));  
+    return this.__createDepthAttachment(new glRenderbufferDepthAttachment24(this.__ctx, this, this.__width, this.__height, this.__nSamples));  
 }
 
 glRenderbuffer.prototype.createDepthAttachment32F = function(attachment) {
-    return this.__createDepthAttachment(new glRenderbufferDepthAttachment32F(this.__ctx, this.__framebuffer, this.__width, this.__height, this.__nSamples));  
+    return this.__createDepthAttachment(new glRenderbufferDepthAttachment32F(this.__ctx, this, this.__width, this.__height, this.__nSamples));  
 }

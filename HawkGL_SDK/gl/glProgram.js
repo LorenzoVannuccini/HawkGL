@@ -60,12 +60,15 @@ glShader.prototype.getShaderID = function() {
     return this.__shaderID;
 }
    
+// -------------------------------------------------------------------------------------------
+
 let glProgram = function(ctx, vertexShaderSource, fragmentShaderSource)
 {
     this.__ctx = ctx;
     let gl = this.__ctx.getGL();
 
     this.__uniforms = new Map();
+    this.__dataSamplers = new Map();
     this.__uniformBlockBases = new Map();
     this.__attributesLocations = new Map();
     this.__pendingUpdateUniforms = new Map();
@@ -121,7 +124,7 @@ glProgram.prototype.__getAttribLocation = function(name)
     let locationID = this.__attributesLocations.get(name);
     if(locationID == null)
     {
-        this.bind();
+        this.__bind();
         this.__attributesLocations.set(name, (locationID = this.__ctx.getGL().getAttribLocation(this.__programID, name)));
     }
 
@@ -130,13 +133,13 @@ glProgram.prototype.__getAttribLocation = function(name)
 
 glProgram.prototype.__getUniformLocation = function(name)
 {
-    this.bind();
+    this.__bind();
     return this.__ctx.getGL().getUniformLocation(this.__programID, name);
 }
 
 glProgram.prototype.__getUniformBlockLocation = function(name)
 {
-    this.bind();
+    this.__bind();
     return this.__ctx.getGL().getUniformBlockIndex(this.__programID, name);
 }
 
@@ -171,6 +174,18 @@ glProgram.prototype.createUniformSampler = function(name, unitID) {
 
 glProgram.prototype.createUniformArraySampler = function(name, size, array) {
     return this.createUniformArrayInt(name, size, array);
+}
+
+glProgram.prototype.createUniformSamplerData = function(name, unitID)
+{
+    let uniform = new glUniformSamplerData(this.__ctx.getGL(), this, name, unitID);
+
+    this.__uniforms.set(name + ".sampler", uniform.__sampler);
+    this.__uniforms.set(name + ".unitID", uniform.__unitID);
+
+    this.__dataSamplers.set(name, uniform);
+   
+    return uniform;
 }
 
 glProgram.prototype.createUniformFloat = function(name, value)
@@ -292,7 +307,7 @@ glProgram.prototype.getUniform = function(name) {
 
 glProgram.prototype.update = function()
 {
-    this.bind();
+    this.__bind();
     
     let self = this;
     this.__uniformBlockBases.forEach( function(uniform)
@@ -303,6 +318,39 @@ glProgram.prototype.update = function()
         if(uniformBlock != null) uniformBlock.update();
     });
 
+    let textureDataDescriptors = this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.get();
+    let shouldUpdateTextureDataDescriptors = false;
+    
+    this.__dataSamplers.forEach( function(uniform)
+    {
+        let textureUnitID = uniform.get();
+        let activeTexture = self.__ctx.getActiveTexture(textureUnitID);
+        let dataTexture = ((activeTexture != null) ? activeTexture.__dataTexture : null);
+
+        if(dataTexture != null)
+        {
+            let boundDescriptor = textureDataDescriptors[textureUnitID];
+            let descriptor = dataTexture.__descriptor;
+            
+            let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.localSize     || 
+                                           boundDescriptor.y != descriptor.workGroupSize || 
+                                           boundDescriptor.z != descriptor.workGroupSizeSquared );
+
+            if(shouldUpdateDescriptor)
+            {
+                boundDescriptor.x = descriptor.localSize;
+                boundDescriptor.y = descriptor.workGroupSize;
+                boundDescriptor.z = descriptor.workGroupSizeSquared;
+                
+                shouldUpdateTextureDataDescriptors = true;
+            }
+        }
+    });
+
+    if(shouldUpdateTextureDataDescriptors) {
+        this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.set(textureDataDescriptors);
+    }
+    
     this.__pendingUpdateUniforms.forEach( function(uniform) {
         uniform.update();
     });
@@ -324,16 +372,24 @@ glProgram.prototype.ready = function() {
     return this.__ready;
 }
 
+glProgram.prototype.__getHeader = function() {
+    return this.__ctx.__shadingGlobalConstants;
+}
+
+glProgram.prototype.__getHeaderLines = function() {
+    return this.__ctx.__shadingGlobalConstantsLineCount;
+}
+
 glProgram.prototype.compile = function()
 {
     let status = true;
 
-    let header = this.__ctx.__shadingGlobalConstants;
-    this.__headerLines = (this.__ctx.__shadingGlobalConstantsLineCount + 1);
+    let header = this.__getHeader();
+    this.__headerLines = (this.__getHeaderLines() + 1);
     
     status *= this.__vertexShader.compile(  "#define GLES_VERTEX_SHADER 1\n"   + header, this.__vertexShaderSource);
     status *= this.__fragmentShader.compile("#define GLES_FRAGMENT_SHADER 1\n" + header, this.__fragmentShaderSource);
-
+    
     if(status)
     {
         let gl = this.__ctx.getGL();
@@ -371,7 +427,7 @@ glProgram.__parseShaderError = function(errorMsg, headerLines)
     errorInfo.message = errorInfo.message.substr(0, ((nextErrorOccurence > 0) ? nextErrorOccurence : errorInfo.message.length)); 
 
     errorInfo.line = (parseInt(errorInfo.message.substr(errorInfo.message.indexOf(":") + 1)) - ((headerLines != null) ? headerLines : 0));
-    if(isNaN(errorInfo.line) || errorInfo.line < 0) errorInfo.line = null;
+    if(isNaN(errorInfo.line) || errorInfo.line <= 0) errorInfo.line = null;
     
     errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
     errorInfo.message = errorInfo.message.substr(errorInfo.message.indexOf(":") + 1);
@@ -404,12 +460,20 @@ glProgram.prototype.getLastError = function()
     return error;
 }
 
-glProgram.prototype.bind = function() {
+glProgram.prototype.__bind = function() {
     this.__ctx.bindProgram(this);
 }
 
+glProgram.prototype.__unbind = function() {
+    this.__ctx.__unbindProgram();
+}
+
+glProgram.prototype.bind = function() {
+    this.__bind();
+}
+
 glProgram.prototype.unbind = function() {
-    this.__ctx.unbindProgram();
+    this.__unbind();
 }
 
 glProgram.prototype.runPostProcess = function()
@@ -419,8 +483,239 @@ glProgram.prototype.runPostProcess = function()
     let wasCullingEnabled = gl.isEnabled(gl.CULL_FACE);
     if(wasCullingEnabled) gl.disable(gl.CULL_FACE);
 
-    this.bind();
+    this.__bind();
     this.__ctx.__uniformRectMesh.render();
 
     if(wasCullingEnabled) gl.enable(gl.CULL_FACE);
 }
+
+// -------------------------------------------------------------------------------------------
+
+let glComputeProgram = function(ctx, computeShader)
+{
+    this.__ctx = ctx;
+
+    glProgram.call(this, ctx, computeShader);
+    this.__vertexShaderName = this.__fragmentShaderName = "Compute Shader";
+};
+
+glComputeProgram.prototype = Object.create(glProgram.prototype);
+
+glComputeProgram.__nextSquared = function(x) 
+{ 
+    let s = Math.sqrt(x);
+    let n = Math.floor(s);
+    
+    return ((n != s) ? (n + 1) : s); 
+}
+
+glComputeProgram.prototype.compile = function()
+{
+    /*                                                                                                                                                                  
+        glNumInvocations:     number of invocations passed to the dispatch function                                                                                     
+        glInvocationSize:     number of outputs (vec4) per invocation, constant                                                                                         
+        glNumWorkGroups:      number of dispatched working groups: ceil(glNumInvocations / glWorkGroupSize)                                                                               
+        glWorkGroupSize:      number of invocations per working group, specified client side                                                      
+        glWorkGroupID:        current work group ID, in range [0, glNumWorkGroups - 1], overridable                                                                     
+        glLocalInvocationID:  current invocation within the work group, in range [0, glWorkGroupSize - 1]                                                               
+        glGlobalInvocationID: invocation among all invocations of dispatch call, in range [0, glNumInvocations]: (glWorkGroupID * glWorkGroupSize + glLocalInvocationID)
+        glData[outputID]:     invocation output (vec4), for outputID in range [0, glInvocationSize - 1]                                                                                                                               
+    */                                                                                                                                                                  
+
+    this.__invocationSize = null;
+    if(this.__vertexShaderSource == null) return false;
+
+    let local_size_str = this.__vertexShaderSource.replace(/(\/\*[^]*?\*\/|\/\/.*)\n?/g, "");
+    local_size_str = local_size_str.replace(/(\r\n|\n|\r)/gm, "");
+    
+    let local_size_index = local_size_str.indexOf("local_size");
+    if(local_size_index < 0) return false;
+
+    this.__invocationSize = parseInt(local_size_str.substr(local_size_index).match(/^.*?\([^\d]*(\d+)[^\d]*\).*$/)[1]);
+    
+    this.__header = "highp int glWorkGroupID = 0;                                                                                                                                                  \n" +
+                    "highp int glNumWorkGroups = 0;                                                                                                                                                \n" +
+                    "highp int glLocalInvocationID = 0;                                                                                                                                            \n" +
+                    "highp int glGlobalInvocationID = 0;                                                                                                                                           \n" +
+                    "const highp int glInvocationSize = " + this.__invocationSize + ";                                                                                                             \n" +
+                    "highp vec4 glData[glInvocationSize];                                                                                                                                          \n" +
+                    "                                                                                                                                                                              \n" +
+                    "uniform highp int glWorkGroupSize;                                                                                                                                            \n" +
+                    "uniform highp int _workGroupSizeSquared;                                                                                                                                      \n" +
+                    "uniform highp int glNumInvocations;                                                                                                                                           \n" +
+                    "uniform highp vec2 _bufferSizeVec2;                                                                                                                                           \n" +
+                    "highp ivec2 _bufferSize = ivec2(0);                                                                                                                                           \n" +
+                    "                                                                                                                                                                              \n" +
+                    "void _executeWorkingGroup();                                                                                                                                                  \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#ifdef GLES_VERTEX_SHADER                                                                                                                                                     \n" +
+                    "                                                                                                                                                                              \n" +
+                    "flat out highp vec4 _workGroupData0;                                                                                                                                          \n" +
+                    "flat out highp ivec2 _outputCoord;                                                                                                                                            \n" +
+                    "flat out highp int _workgroupID;                                                                                                                                              \n" +
+                    "                                                                                                                                                                              \n" +
+                    "void main()                                                                                                                                                                   \n" +
+                    "{                                                                                                                                                                             \n" +
+                    "    _bufferSize = ivec2(_bufferSizeVec2);                                                                                                                                     \n" +
+                    "    glWorkGroupID = _workgroupID = gl_VertexID;                                                                                                                               \n" +
+                    "    glNumWorkGroups = int(ceil(float(glNumInvocations) / float(glWorkGroupSize)));                                                                                            \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    glLocalInvocationID = 0;                                                                                                                                                  \n" +
+                    "    glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                           \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    if(glGlobalInvocationID < glNumInvocations) _executeWorkingGroup();                                                                                                       \n" +
+                    "    _workGroupData0 = glData[0];                                                                                                                                              \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    gl_PointSize = float(_workGroupSizeSquared);                                                                                                                              \n" +
+                    "    _outputCoord = ivec2((glWorkGroupID * _workGroupSizeSquared) % _bufferSize.x, gl_PointSize * floor(float(glWorkGroupID * _workGroupSizeSquared) / float(_bufferSize.x))); \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    gl_Position = vec4(-1.0 + 2.0 * vec2(_outputCoord) / vec2(_bufferSize), 0.0, 1.0);                                                                                        \n" +
+                    "    gl_Position.xy += vec2(gl_PointSize + 0.5) / vec2(_bufferSize);                                                                                                           \n" +
+                    "}                                                                                                                                                                             \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#undef glAnimatedVertex                                                                                                                                                       \n" +
+                    "#undef glAnimatedNormal                                                                                                                                                       \n" +
+                    "#undef glLastFrameAnimatedVertex                                                                                                                                              \n" +
+                    "#undef glLastFrameAnimatedNormal                                                                                                                                              \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#define gl_Position  reserved_keyword                                                                                                                                         \n" +
+                    "#define gl_PointSize reserved_keyword                                                                                                                                         \n" +
+                    "#define glVertex     reserved_keyword                                                                                                                                         \n" +
+                    "#define glNormal     reserved_keyword                                                                                                                                         \n" +
+                    "#define glTexCoord   reserved_keyword                                                                                                                                         \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#undef GLES_VERTEX_SHADER                                                                                                                                                     \n" +
+                    "#endif                                                                                                                                                                        \n" +
+                    "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                   \n" +
+                    "                                                                                                                                                                              \n" +
+                    "flat in highp vec4 _workGroupData0;                                                                                                                                           \n" +
+                    "flat in highp ivec2 _outputCoord;                                                                                                                                             \n" +
+                    "flat in highp int _workgroupID;                                                                                                                                               \n" +
+                    "                                                                                                                                                                              \n" +
+                    "out highp vec4 glFragData;                                                                                                                                                    \n" +
+                    "                                                                                                                                                                              \n" +
+                    "void main()                                                                                                                                                                   \n" +
+                    "{                                                                                                                                                                             \n" +
+                    "    highp ivec2 dataCoord = ivec2(gl_FragCoord.xy) - _outputCoord;                                                                                                            \n" +
+                    "    highp int localOutputID = (dataCoord.x + dataCoord.y * _workGroupSizeSquared);                                                                                            \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    if(localOutputID > 0)                                                                                                                                                     \n" +
+                    "    {                                                                                                                                                                         \n" +
+                    "        glWorkGroupID = _workgroupID;                                                                                                                                         \n" +
+                    "        _bufferSize = ivec2(_bufferSizeVec2);                                                                                                                                 \n" +
+                    "                                                                                                                                                                              \n" +
+                    "        glNumWorkGroups = int(ceil(float(glNumInvocations) / float(glWorkGroupSize)));                                                                                        \n" +
+                    "        glLocalInvocationID = int(floor(float(localOutputID) / float(glInvocationSize)));                                                                                     \n" +
+                    "        glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                       \n" +
+                    "                                                                                                                                                                              \n" +
+                    "        if(glLocalInvocationID < glWorkGroupSize && glGlobalInvocationID < glNumInvocations)                                                                                  \n" +
+                    "        {                                                                                                                                                                     \n" +
+                    "            _executeWorkingGroup();                                                                                                                                           \n" +
+                    "            glFragData = glData[localOutputID % glInvocationSize];                                                                                                            \n" +
+                    "        }                                                                                                                                                                     \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    } else glFragData = _workGroupData0;                                                                                                                                      \n" +
+                    "}                                                                                                                                                                             \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#undef GLES_FRAGMENT_SHADER                                                                                                                                                   \n" +
+                    "#endif                                                                                                                                                                        \n" +
+                    "                                                                                                                                                                              \n" +
+                    "#define GLES_COMPUTE_SHADER                                                                                                                                                   \n" +
+                    "#define local_size(x) const int local_size = x;                                                                                                                               \n" +
+                    "#define main() _executeWorkingGroup()                                                                                                                                         \n";
+            
+    let status = glProgram.prototype.compile.call(this);
+    if(status)
+    {
+        this.__uniform_bufferSize           = this.createUniformVec2("_bufferSizeVec2");
+        this.__uniform_nInvocations         = this.createUniformInt("glNumInvocations");
+        this.__uniform_workGroupSize        = this.createUniformInt("glWorkGroupSize");
+        this.__uniform_workGroupSizeSquared = this.createUniformInt("_workGroupSizeSquared");
+    }
+
+    return status;
+}
+
+glComputeProgram.prototype.__getHeader = function() {
+    return this.__ctx.__shadingGlobalConstants + this.__header;
+}
+
+glComputeProgram.prototype.__getHeaderLines = function() {
+    return this.__ctx.__shadingGlobalConstantsLineCount + 90;
+}
+
+glComputeProgram.prototype.setSource = function(computeShaderSource) {
+    this.__vertexShaderSource = this.__fragmentShaderSource = computeShaderSource;
+}
+
+glComputeProgram.prototype.loadAsync = function(computeShaderPath, completionHandler)
+{         
+    let self = this;
+
+    this.__vertexShaderName = this.__fragmentShaderName = "\"" + computeShaderPath + "\"";
+   
+    dispatchAsync( function()
+    {                                 
+        loadFileAsync(computeShaderPath, function(shaderSource)
+        {
+            if(self.__programID != null)
+            {
+                self.setSource(shaderSource[0]);
+    
+                let didCompile = self.compile();
+                if(completionHandler != null) completionHandler(self, didCompile, (didCompile ? null : self.getLastError()));
+            }
+        }); 
+    });
+}
+
+glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations, nInvocationsPerWorkGroup)
+{
+    if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = 1;
+        
+    if(this.__invocationSize != null)
+    {
+        let gl = this.__ctx.getGL();
+
+        let wasCullingEnabled = gl.isEnabled(gl.CULL_FACE);
+        let wasDepthTestingEnabled = gl.isEnabled(gl.DEPTH_TEST);
+        let lastActiveProgram = this.__ctx.getActiveProgram();
+        let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
+            
+        if(wasCullingEnabled) gl.disable(gl.CULL_FACE);
+        if(wasDepthTestingEnabled) gl.disable(gl.DEPTH_TEST);
+
+        computeTextureData.setCapacity(this.__invocationSize, nInvocations);
+
+        let workGroupSizeSquared = Math.min(Math.max(nextPot(Math.sqrt(this.__invocationSize * nInvocationsPerWorkGroup)), 1), computeTextureData.getWidth());
+        let workGroupSize = Math.max(Math.floor((workGroupSizeSquared * workGroupSizeSquared) / this.__invocationSize), 1);
+        
+        computeTextureData.__descriptor.localSize = this.__invocationSize;
+        computeTextureData.__descriptor.workGroupSize = workGroupSize;
+        computeTextureData.__descriptor.workGroupSizeSquared = workGroupSizeSquared;
+        
+        this.__bind();
+        computeTextureData.__framebuffer.bind(computeTextureData.__framebufferAttachment);
+        
+        this.__uniform_bufferSize.set(computeTextureData.getWidth(), computeTextureData.getHeight());
+        this.__uniform_workGroupSizeSquared.set(workGroupSizeSquared);
+        this.__uniform_workGroupSize.set(workGroupSize);
+        this.__uniform_nInvocations.set(nInvocations);
+        
+        this.__ctx.updateActiveProgram();                                                  
+        this.__ctx.unbindVertexArray(); 
+            
+        let nWorkGroups = Math.ceil(nInvocations / workGroupSize); 
+        gl.drawArrays(gl.POINTS, 0, nWorkGroups);
+
+        this.__ctx.bindProgram(lastActiveProgram);
+        this.__ctx.bindFramebuffer(lastActiveFramebuffer);
+
+        if(wasDepthTestingEnabled) gl.enable(gl.DEPTH_TEST);
+        if(wasCullingEnabled) gl.enable(gl.CULL_FACE);
+    }
+}
+
+glComputeProgram.prototype.bind = null;
+glComputeProgram.prototype.unbind = null;
+glComputeProgram.prototype.runPostProcess = null;

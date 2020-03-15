@@ -642,3 +642,27 @@ glUniformArrayMat4.prototype.get = function()
 }
 
 // -------------------------------------------------------------------------------------------
+
+let glUniformSamplerData = function(ctx, program, name, unitID, dataDescriptor)
+{
+    this.__sampler = new glUniformInt(ctx, program, name + ".sampler", unitID);
+    this.__unitID  = new glUniformInt(ctx, program, name + ".unitID",  unitID);
+}
+
+glUniformSamplerData.prototype.update = function()
+{
+    this.__sampler.update();
+    this.__unitID.update();
+}
+
+glUniformSamplerData.prototype.set = function(unitID)
+{
+    this.__sampler.set(unitID);
+    this.__unitID.set(unitID);
+}
+
+glUniformSamplerData.prototype.get = function() {
+    return this.__unitID.get();
+}
+
+// -------------------------------------------------------------------------------------------

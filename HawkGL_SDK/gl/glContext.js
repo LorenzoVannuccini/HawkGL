@@ -73,18 +73,23 @@ let glContext = function(canvasID)
     
     this.__shadingGlobalConstants = "";
     this.__shadingGlobalConstantsLineCount = 0;
-    
+
+    let maxFragTextureUnits = this.__gl.getParameter(this.__gl.MAX_TEXTURE_IMAGE_UNITS);
+    let maxVertTextureUnits = this.__gl.getParameter(this.__gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
+    let maxTextureUnits = Math.max(maxVertTextureUnits, maxFragTextureUnits);
+
     // let maxUniformBlockUnits = this.__gl.getParameter(this.__gl.MAX_UNIFORM_BUFFER_BINDINGS);
 
     this.__standardUniformsBlock  = new glUniformBlock(this, "glStandardUniformsBlock");
     this.__animationUniformsBlock = new glUniformBlock(this, "glAnimationUniformsBlock");
 
-    this.__standardUniformsBlock.glModelViewProjectionMatrix  = this.__standardUniformsBlock.createUniformMat4("glModelViewProjectionMatrix", glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glProjectionMatrix           = this.__standardUniformsBlock.createUniformMat4("glProjectionMatrix",          glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glModelViewMatrix            = this.__standardUniformsBlock.createUniformMat4("glModelViewMatrix",           glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glNormalMatrix               = this.__standardUniformsBlock.createUniformMat3("glNormalMatrix",              glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
-    this.__standardUniformsBlock.glTime                       = this.__standardUniformsBlock.createUniformFloat("glTime",                     glUniformBlock.Precision.MEDIUMP, 0.0);
-    this.__standardUniformsBlock.glIsAnimationActive          = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",          glUniformBlock.Precision.LOWP,    0);
+    this.__standardUniformsBlock.glModelViewProjectionMatrix = this.__standardUniformsBlock.createUniformMat4("glModelViewProjectionMatrix",    glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glProjectionMatrix          = this.__standardUniformsBlock.createUniformMat4("glProjectionMatrix",             glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glModelViewMatrix           = this.__standardUniformsBlock.createUniformMat4("glModelViewMatrix",              glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glNormalMatrix              = this.__standardUniformsBlock.createUniformMat3("glNormalMatrix",                 glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
+    this.__standardUniformsBlock.glTime                      = this.__standardUniformsBlock.createUniformFloat("glTime",                        glUniformBlock.Precision.MEDIUMP, 0.0);
+    this.__standardUniformsBlock.glIsAnimationActive         = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",             glUniformBlock.Precision.LOWP,    0);
+    this.__standardUniformsBlock._glTextureDataDescriptors   = this.__standardUniformsBlock.createUniformArrayVec3("_glTextureDataDescriptors", glUniformBlock.Precision.MEDIUMP, maxTextureUnits, null);
     
     this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 256, null);
     this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 256, null);
@@ -248,6 +253,30 @@ let glContext = function(canvasID)
                                "#define glLastFrameAnimatedNormal glGetLastFrameAnimatedNormal()                                                                           \n" +
                                "                                                                                                                                           \n" +
                                "#endif                                                                                                                                     \n");
+
+    this.__appendShadingHeader("struct samplerData                                                                                                                                                                                                                                                          " +
+                               "{                                                                                                                                                                                       \n" +
+                               "   highp sampler2D sampler;                                                                                                                                                             \n" +
+                               "   lowp int unitID;                                                                                                                                                                     \n" +
+                               "};                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "highp vec4 textureData(in samplerData s, in int invocationID, in int outputID)                                                                                                          \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "   ivec2 bufferSize = textureSize(s.sampler, 0);                                                                                                                                        \n" +
+                               "   ivec3 descriptor = ivec3(_glTextureDataDescriptors[s.unitID]);                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "   int localSize = descriptor.x;                                                                                                                                                        \n" +
+                               "   int workGroupSize = descriptor.y;                                                                                                                                                    \n" +
+                               "   int workGroupSizeSquared = descriptor.z;                                                                                                                                             \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "   int workGroupID = int(floor(float(invocationID) / float(workGroupSize)));                                                                                                            \n" +
+                               "   int localOutputID = (invocationID % workGroupSize) * localSize + outputID;                                                                                                           \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "   ivec2 dataCoord = ivec2((workGroupID * workGroupSizeSquared) % bufferSize.x, float(workGroupSizeSquared) * floor(float(workGroupID * workGroupSizeSquared) / float(bufferSize.x)));  \n" +
+                               "   dataCoord += ivec2(localOutputID % workGroupSizeSquared, floor(float(localOutputID) / float(workGroupSizeSquared)));                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "   return texelFetch(s.sampler, dataCoord, 0);                                                                                                                                          \n" +
+                               "}                                                                                                                                                                                       \n");
 }
 
 glContext.__reservedUniformBlockUnits = 2;
@@ -1041,11 +1070,15 @@ glContext.prototype.unbindVertexArray = function() {
 }
 
 glContext.prototype.bindFramebuffer = function(framebuffer) {
-    this.__gl.bindFramebuffer(this.__gl.FRAMEBUFFER, (this.__activeFramebuffer = framebuffer));
+    if(!this.isFramebufferBound(framebuffer)) this.__gl.bindFramebuffer(this.__gl.FRAMEBUFFER, (this.__activeFramebuffer = framebuffer));
 }
 
 glContext.prototype.unbindFramebuffer = function() {
     this.bindFramebuffer(null);
+}
+
+glContext.prototype.isFramebufferBound = function(framebuffer) {
+    return (this.getActiveFramebuffer() == framebuffer);
 }
 
 glContext.prototype.getActiveFramebuffer = function() {
@@ -1053,11 +1086,15 @@ glContext.prototype.getActiveFramebuffer = function() {
 }
 
 glContext.prototype.bindRenderbuffer = function(renderbuffer) {
-    this.__gl.bindRenderbuffer(this.__gl.RENDERBUFFER, (this.__activeRenderbuffer = renderbuffer));
+    if(!this.isRenderbufferBound(renderbuffer)) this.__gl.bindRenderbuffer(this.__gl.RENDERBUFFER, (this.__activeRenderbuffer = renderbuffer));
 }
 
 glContext.prototype.unbindRenderbuffer = function() {
     this.bindRenderbuffer(null);
+}
+
+glContext.prototype.isRenderbufferBound = function(renderbuffer) {
+    return (this.getActiveRenderbuffer() == renderbuffer);
 }
 
 glContext.prototype.getActiveRenderbuffer = function() {
