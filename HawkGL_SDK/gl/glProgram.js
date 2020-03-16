@@ -465,7 +465,7 @@ glProgram.prototype.__bind = function() {
 }
 
 glProgram.prototype.__unbind = function() {
-    this.__ctx.__unbindProgram();
+    this.__ctx.unbindProgram();
 }
 
 glProgram.prototype.bind = function() {
