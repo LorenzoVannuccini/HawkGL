@@ -318,14 +318,16 @@ glFramebuffer.prototype.unbind = function() {
 glFramebuffer.prototype.__createColorAttachment = function(attachment)
 {
     let nMaxColorAttachments = 16;  // TODO: query from GL
-    if(attachment.getAttachmentID() > nMaxColorAttachments) return null; // TODO: handle exception
+    if(attachment.getAttachmentID() >= nMaxColorAttachments) return null; // TODO: handle exception
 
+    let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
     this.bind();
     
     let gl = this.__ctx.getGL();
     this.__colorAttachments.push(attachment);
 
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + attachment.getAttachmentID(), gl.TEXTURE_2D, attachment.getRenderTextureID(), 0);
+    this.__ctx.bindFramebuffer(lastActiveFramebuffer);
     
     return attachment;
 }
@@ -344,13 +346,15 @@ glFramebuffer.prototype.createColorAttachmentRGBA32F = function() {
 
 glFramebuffer.prototype.__createDepthAttachment = function(attachment)
 {
+    let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
     this.bind();
         
     let gl = this.__ctx.getGL();
     this.__depthAttachment = attachment;
 
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, attachment.getRenderTextureID(), 0);
- 
+    this.__ctx.bindFramebuffer(lastActiveFramebuffer);
+   
     return attachment;    
 }
 
@@ -525,13 +529,15 @@ glRenderbuffer.prototype.__createColorAttachment = function(attachment)
     let nMaxColorAttachments = 16;  // TODO: query from GL
     if(attachment.getAttachmentID() > nMaxColorAttachments) return null; // TODO: handle exception
 
+    let lastActiveRenderbuffer = this.__ctx.getActiveRenderbuffer();
     this.bind();
     
     let gl = this.__ctx.getGL();
     this.__colorAttachments.push(attachment);
 
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + attachment.getAttachmentID(), gl.RENDERBUFFER, attachment.getRenderBufferID());
-    
+    this.__ctx.bindRenderbuffer(lastActiveRenderbuffer);
+   
     return attachment;
 }
 
@@ -549,13 +555,15 @@ glRenderbuffer.prototype.createColorAttachmentRGBA32F = function() {
 
 glRenderbuffer.prototype.__createDepthAttachment = function(attachment)
 {
+    let lastActiveRenderbuffer = this.__ctx.getActiveRenderbuffer();
     this.bind();
         
     let gl = this.__ctx.getGL();
     this.__depthAttachment = attachment;
 
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, attachment.getRenderBufferID());
- 
+    this.__ctx.bindRenderbuffer(lastActiveRenderbuffer);
+    
     return attachment;    
 }
 

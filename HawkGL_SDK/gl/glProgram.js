@@ -310,47 +310,51 @@ glProgram.prototype.update = function()
     this.__bind();
     
     let self = this;
+    
+    if(this.__dataSamplers.size > 0)
+    {
+        let textureDataDescriptors = this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.get();
+        let shouldUpdateTextureDataDescriptors = false;
+        
+        this.__dataSamplers.forEach( function(uniform)
+        {
+            let textureUnitID = uniform.get();
+            let activeTexture = self.__ctx.getActiveTexture(textureUnitID);
+            let dataTexture = ((activeTexture != null) ? activeTexture.__dataTexture : null);
+            
+            if(dataTexture != null)
+            {
+                let boundDescriptor = textureDataDescriptors[textureUnitID];
+                let descriptor = dataTexture.__descriptor;
+                
+                let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.localSize     || 
+                                               boundDescriptor.y != descriptor.workGroupSize || 
+                                               boundDescriptor.z != descriptor.workGroupSizeSquared );
+
+                if(shouldUpdateDescriptor)
+                {
+                    boundDescriptor.x = descriptor.localSize;
+                    boundDescriptor.y = descriptor.workGroupSize;
+                    boundDescriptor.z = descriptor.workGroupSizeSquared;
+                    
+                    shouldUpdateTextureDataDescriptors = true;
+                }
+            }
+        });
+
+        if(shouldUpdateTextureDataDescriptors) {
+            this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.set(textureDataDescriptors);
+        }
+    }
+
     this.__uniformBlockBases.forEach( function(uniform)
     {
         let unitID = uniform.get();
         let uniformBlock = self.__ctx.getActiveUniformBlock(unitID);
-        
+
         if(uniformBlock != null) uniformBlock.update();
     });
 
-    let textureDataDescriptors = this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.get();
-    let shouldUpdateTextureDataDescriptors = false;
-    
-    this.__dataSamplers.forEach( function(uniform)
-    {
-        let textureUnitID = uniform.get();
-        let activeTexture = self.__ctx.getActiveTexture(textureUnitID);
-        let dataTexture = ((activeTexture != null) ? activeTexture.__dataTexture : null);
-
-        if(dataTexture != null)
-        {
-            let boundDescriptor = textureDataDescriptors[textureUnitID];
-            let descriptor = dataTexture.__descriptor;
-            
-            let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.localSize     || 
-                                           boundDescriptor.y != descriptor.workGroupSize || 
-                                           boundDescriptor.z != descriptor.workGroupSizeSquared );
-
-            if(shouldUpdateDescriptor)
-            {
-                boundDescriptor.x = descriptor.localSize;
-                boundDescriptor.y = descriptor.workGroupSize;
-                boundDescriptor.z = descriptor.workGroupSizeSquared;
-                
-                shouldUpdateTextureDataDescriptors = true;
-            }
-        }
-    });
-
-    if(shouldUpdateTextureDataDescriptors) {
-        this.__ctx.__standardUniformsBlock._glTextureDataDescriptors.set(textureDataDescriptors);
-    }
-    
     this.__pendingUpdateUniforms.forEach( function(uniform) {
         uniform.update();
     });
@@ -669,11 +673,9 @@ glComputeProgram.prototype.loadAsync = function(computeShaderPath, completionHan
     });
 }
 
-glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations, nInvocationsPerWorkGroup)
-{
-    if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = 1;
-        
-    if(this.__invocationSize != null)
+glComputeProgram.prototype.__dispatch = function(computeTextureData, nInvocations, workGroupSize, workGroupSizeSquared)
+{    
+    if(this.__invocationSize != null && nInvocations > 0)
     {
         let gl = this.__ctx.getGL();
 
@@ -684,18 +686,11 @@ glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations,
             
         if(wasCullingEnabled) gl.disable(gl.CULL_FACE);
         if(wasDepthTestingEnabled) gl.disable(gl.DEPTH_TEST);
-
-        computeTextureData.setCapacity(this.__invocationSize, nInvocations);
-
-        let workGroupSizeSquared = Math.min(Math.max(nextPot(Math.sqrt(this.__invocationSize * nInvocationsPerWorkGroup)), 1), computeTextureData.getWidth());
-        let workGroupSize = Math.max(Math.floor((workGroupSizeSquared * workGroupSizeSquared) / this.__invocationSize), 1);
-        
-        computeTextureData.__descriptor.localSize = this.__invocationSize;
-        computeTextureData.__descriptor.workGroupSize = workGroupSize;
-        computeTextureData.__descriptor.workGroupSizeSquared = workGroupSizeSquared;
         
         this.__bind();
+        
         computeTextureData.__framebuffer.bind(computeTextureData.__framebufferAttachment);
+        computeTextureData.__invalidated = false;
         
         this.__uniform_bufferSize.set(computeTextureData.getWidth(), computeTextureData.getHeight());
         this.__uniform_workGroupSizeSquared.set(workGroupSizeSquared);
@@ -708,11 +703,22 @@ glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations,
         let nWorkGroups = Math.ceil(nInvocations / workGroupSize); 
         gl.drawArrays(gl.POINTS, 0, nWorkGroups);
 
-        this.__ctx.bindProgram(lastActiveProgram);
         this.__ctx.bindFramebuffer(lastActiveFramebuffer);
-
+        this.__ctx.bindProgram(lastActiveProgram);
+        
         if(wasDepthTestingEnabled) gl.enable(gl.DEPTH_TEST);
         if(wasCullingEnabled) gl.enable(gl.CULL_FACE);
+    }
+}
+
+glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations, nInvocationsPerWorkGroup)
+{   
+    if(this.__invocationSize != null && nInvocations > 0)
+    {
+        if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = 1;
+
+        computeTextureData.setCapacity(this.__invocationSize, nInvocations, nInvocationsPerWorkGroup);
+        this.__dispatch(computeTextureData, nInvocations, computeTextureData.__descriptor.workGroupSize, computeTextureData.__descriptor.workGroupSizeSquared)
     }
 }
 

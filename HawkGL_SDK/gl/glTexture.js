@@ -370,7 +370,8 @@ let glTextureData = function(ctx, localSize, capacity)
     };
 
     this.__capacity = 0;
-
+    this.__invalidated = true;
+        
     if(localSize == null) localSize = 1;
     if(capacity  == null) capacity  = 1;
     
@@ -379,26 +380,97 @@ let glTextureData = function(ctx, localSize, capacity)
 
 glTextureData.prototype.__createAttachment = null; // abstract
 
-glTextureData.prototype.__resize = function(w, h)
+glTextureData.prototype.__resize = function(w, h) // NB: does not free last framebuffer
 {
-    if(this.__framebuffer != null) this.__framebuffer.free();
-
+    let gl = this.__ctx.getGL();
+    
     this.__framebuffer = new glFramebuffer(ctx, w, h);
+    
     this.__framebufferAttachment = this.__createAttachment();
-   
+    this.__framebufferAttachment.setFilterMode(gl.NEAREST, gl.NEAREST);
+
     this.__framebufferAttachment.__renderTexture.getTextureID().__dataTexture = this;
 }
 
-glTextureData.prototype.setCapacity = function(localSize, requestCapacity)
+glTextureData.__genCopyProgram = function(ctx, localSize)
 {
-    if(localSize != this.__descriptor.localSize || requestCapacity > this.__capacity)
+    if(glTextureData.__copyProgramInstances == null) glTextureData.__copyProgramInstances = new Map();
+
+    let contextProgramInstances = glTextureData.__copyProgramInstances.get(ctx);
+    if(contextProgramInstances == null) glTextureData.__copyProgramInstances.set(ctx, (contextProgramInstances = new Map()));
+
+    let program = contextProgramInstances.get(localSize);
+    if(program == null) 
     {
-        let capacitySquared = nextPot(Math.sqrt(requestCapacity * localSize));
+        program = new glComputeProgram(ctx, "#version 300 es                                                         \n" +
+                                            "                                                                        \n" +
+                                            "precision highp int;                                                    \n" +
+                                            "precision highp float;                                                  \n" +
+                                            "                                                                        \n" +
+                                            "uniform samplerData lastStateData;                                      \n" +
+                                            "                                                                        \n" +
+                                            "local_size(" + localSize + ")                                           \n" +
+                                            "                                                                        \n" +
+                                            "void main()                                                             \n" +
+                                            "{                                                                       \n" +
+                                            "   for(int i = 0; i < glInvocationSize; ++i) {                          \n" +    
+                                            "       glData[i] = textureData(lastStateData, glGlobalInvocationID, i); \n" +
+                                            "   }                                                                    \n" +
+                                            "}                                                                       \n");
+                    
+        program.compile();
+        program.createUniformSamplerData("lastStateData", 0);                    
+        
+        contextProgramInstances.set(localSize, program);
+    }
+
+    return program;
+}
+
+glTextureData.prototype.setCapacity = function(localSize, requestCapacity, nInvocationsPerWorkGroup)
+{
+    let lastStateCapacity              = this.__capacity;
+    let lastStateFramebuffer           = this.__framebuffer;
+    let lastStateFrameBufferAttachment = this.__framebufferAttachment;
+    
+    if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = this.__descriptor.workGroupSize;
+    
+    let didResize = (localSize != this.__descriptor.localSize || requestCapacity > this.__capacity);
+    if(didResize)
+    {
+        let capacitySquared = nextPot(Math.ceil(Math.sqrt(requestCapacity * localSize)));
         this.__capacity = Math.floor((capacitySquared * capacitySquared) / localSize);
-        this.__descriptor.localSize = localSize;
         
         this.__resize(capacitySquared, capacitySquared);
     }
+
+    let workGroupSizeSquared = Math.min(Math.max(nextPot(Math.sqrt(localSize * nInvocationsPerWorkGroup)), 1), this.getWidth());
+    let workGroupSize = Math.max(Math.floor((workGroupSizeSquared * workGroupSizeSquared) / localSize), 1);
+
+    let didLayoutChange = (workGroupSize != this.__descriptor.workGroupSize || workGroupSizeSquared != this.__descriptor.workGroupSizeSquared);
+    
+    let shouldCopyLastState = (!this.__invalidated && (didResize || didLayoutChange));
+    if(shouldCopyLastState)
+    {
+        if(!didResize) this.__resize(this.getWidth(), this.getHeight());
+
+        let lastActiveTexture = this.__ctx.getActiveTexture(0);
+        lastStateFrameBufferAttachment.bind(0);
+
+        let copyProgram = glTextureData.__genCopyProgram(this.__ctx, this.__descriptor.localSize);
+        copyProgram.__dispatch(this, lastStateCapacity, workGroupSize, workGroupSizeSquared);
+        
+        if(lastActiveTexture != null) this.__ctx.bindTexture(lastActiveTexture, 0);
+        else lastStateFrameBufferAttachment.unbind();
+
+        console.log(this.__capacity + " -> (" + this.getWidth() + "x" + this.getHeight() + ")");
+    }
+
+    if(lastStateFramebuffer != null && lastStateFramebuffer != this.__framebuffer) lastStateFramebuffer.free();
+
+    this.__descriptor.workGroupSizeSquared = workGroupSizeSquared;
+    this.__descriptor.workGroupSize = workGroupSize;
+    this.__descriptor.localSize = localSize;
 }
 
 glTextureData.prototype.free = function()
@@ -410,7 +482,45 @@ glTextureData.prototype.free = function()
     }
 }
 
-glTextureData.prototype.set = function(){}
+glTextureData.prototype.clear = function()
+{
+    let gl = this.__ctx.getGL();
+    
+    let lastClearColor = gl.getParameter(gl.COLOR_CLEAR_VALUE);
+    let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
+    
+    this.__framebuffer.bind(this.__framebufferAttachment);
+   
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.clearColor(lastClearColor[0], lastClearColor[1], lastClearColor[2], lastClearColor[3]);
+    this.__ctx.bindFramebuffer(lastActiveFramebuffer);
+
+    this.__invalidated = true;
+}
+
+glTextureData.prototype.invalidate = function()
+{
+    this.__framebuffer.invalidate();
+    this.__invalidated = true;
+}
+
+glTextureData.prototype.set = function(textureData)
+{
+    this.__invalidated = true;
+    
+    this.setCapacity(textureData.__descriptor.localSize, textureData.__capacity);
+    this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
+
+    let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
+    this.__framebuffer.bind(this.__framebufferAttachment);
+      
+    textureData.blit(this.__ctx.getGL().NEAREST);
+
+    this.__ctx.bindFramebuffer(lastActiveFramebuffer);
+    this.__invalidated = false;
+}
 
 glTextureData.prototype.getWidth = function() {
     return this.__framebufferAttachment.getWidth();
