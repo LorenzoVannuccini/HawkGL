@@ -327,15 +327,17 @@ glProgram.prototype.update = function()
                 let boundDescriptor = textureDataDescriptors[textureUnitID];
                 let descriptor = dataTexture.__descriptor;
                 
-                let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.localSize     || 
-                                               boundDescriptor.y != descriptor.workGroupSize || 
-                                               boundDescriptor.z != descriptor.workGroupSizeSquared );
+                let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.size          ||
+                                               boundDescriptor.y != descriptor.localSize     || 
+                                               boundDescriptor.z != descriptor.workGroupSize || 
+                                               boundDescriptor.w != descriptor.workGroupSizeSquared );
 
                 if(shouldUpdateDescriptor)
                 {
-                    boundDescriptor.x = descriptor.localSize;
-                    boundDescriptor.y = descriptor.workGroupSize;
-                    boundDescriptor.z = descriptor.workGroupSizeSquared;
+                    boundDescriptor.x = descriptor.size;
+                    boundDescriptor.y = descriptor.localSize;
+                    boundDescriptor.z = descriptor.workGroupSize;
+                    boundDescriptor.w = descriptor.workGroupSizeSquared;
                     
                     shouldUpdateTextureDataDescriptors = true;
                 }
@@ -538,15 +540,19 @@ glComputeProgram.prototype.compile = function()
     this.__invocationSize = parseInt(local_size_str.substr(local_size_index).match(/^.*?\([^\d]*(\d+)[^\d]*\).*$/)[1]);
     
     this.__header = "highp int glWorkGroupID = 0;                                                                                                                                                  \n" +
-                    "highp int glNumWorkGroups = 0;                                                                                                                                                \n" +
+                    "highp int glNumInvocations = 0;                                                                                                                                               \n" +
                     "highp int glLocalInvocationID = 0;                                                                                                                                            \n" +
                     "highp int glGlobalInvocationID = 0;                                                                                                                                           \n" +
                     "const highp int glInvocationSize = " + this.__invocationSize + ";                                                                                                             \n" +
                     "highp vec4 glData[glInvocationSize];                                                                                                                                          \n" +
                     "                                                                                                                                                                              \n" +
+                    "uniform highp int glNumWorkGroups;                                                                                                                                            \n" +
                     "uniform highp int glWorkGroupSize;                                                                                                                                            \n" +
+                    "uniform highp int glStartWorkGroupID;                                                                                                                                         \n" +
+                    "uniform highp int glEndWorkGroupID;                                                                                                                                         \n" +
                     "uniform highp int _workGroupSizeSquared;                                                                                                                                      \n" +
-                    "uniform highp int glNumInvocations;                                                                                                                                           \n" +
+                    "uniform highp int glStartInvocationID;                                                                                                                                        \n" +
+                    "uniform highp int glEndInvocationID;                                                                                                                                          \n" +
                     "uniform highp vec2 _bufferSizeVec2;                                                                                                                                           \n" +
                     "highp ivec2 _bufferSize = ivec2(0);                                                                                                                                           \n" +
                     "                                                                                                                                                                              \n" +
@@ -561,13 +567,13 @@ glComputeProgram.prototype.compile = function()
                     "void main()                                                                                                                                                                   \n" +
                     "{                                                                                                                                                                             \n" +
                     "    _bufferSize = ivec2(_bufferSizeVec2);                                                                                                                                     \n" +
-                    "    glWorkGroupID = _workgroupID = gl_VertexID;                                                                                                                               \n" +
-                    "    glNumWorkGroups = int(ceil(float(glNumInvocations) / float(glWorkGroupSize)));                                                                                            \n" +
+                    "    glWorkGroupID = _workgroupID = (glStartWorkGroupID + gl_VertexID);                                                                                                        \n" +
                     "                                                                                                                                                                              \n" +
                     "    glLocalInvocationID = 0;                                                                                                                                                  \n" +
                     "    glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                           \n" +
+                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                             \n" +
                     "                                                                                                                                                                              \n" +
-                    "    if(glGlobalInvocationID < glNumInvocations) _executeWorkingGroup();                                                                                                       \n" +
+                    "    if(glGlobalInvocationID >= glStartInvocationID && glGlobalInvocationID <= glEndInvocationID) _executeWorkingGroup();                                                       \n" +
                     "    _workGroupData0 = glData[0];                                                                                                                                              \n" +
                     "                                                                                                                                                                              \n" +
                     "    gl_PointSize = float(_workGroupSizeSquared);                                                                                                                              \n" +
@@ -603,20 +609,17 @@ glComputeProgram.prototype.compile = function()
                     "    highp ivec2 dataCoord = ivec2(gl_FragCoord.xy) - _outputCoord;                                                                                                            \n" +
                     "    highp int localOutputID = (dataCoord.x + dataCoord.y * _workGroupSizeSquared);                                                                                            \n" +
                     "                                                                                                                                                                              \n" +
-                    "    if(localOutputID > 0)                                                                                                                                                     \n" +
+                    "    glWorkGroupID = _workgroupID;                                                                                                                                             \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    glLocalInvocationID = int(floor(float(localOutputID) / float(glInvocationSize)));                                                                                         \n" +
+                    "    glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                           \n" +
+                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                             \n" +
+                    "                                                                                                                                                                              \n" +
+                    "    if(glLocalInvocationID >= glWorkGroupSize || glGlobalInvocationID < glStartInvocationID || glGlobalInvocationID > glEndInvocationID) discard;                            \n" +
+                    "    else if(localOutputID > 0)                                                                                                                                                \n" +
                     "    {                                                                                                                                                                         \n" +
-                    "        glWorkGroupID = _workgroupID;                                                                                                                                         \n" +
-                    "        _bufferSize = ivec2(_bufferSizeVec2);                                                                                                                                 \n" +
-                    "                                                                                                                                                                              \n" +
-                    "        glNumWorkGroups = int(ceil(float(glNumInvocations) / float(glWorkGroupSize)));                                                                                        \n" +
-                    "        glLocalInvocationID = int(floor(float(localOutputID) / float(glInvocationSize)));                                                                                     \n" +
-                    "        glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                       \n" +
-                    "                                                                                                                                                                              \n" +
-                    "        if(glLocalInvocationID < glWorkGroupSize && glGlobalInvocationID < glNumInvocations)                                                                                  \n" +
-                    "        {                                                                                                                                                                     \n" +
-                    "            _executeWorkingGroup();                                                                                                                                           \n" +
-                    "            glFragData = glData[localOutputID % glInvocationSize];                                                                                                            \n" +
-                    "        }                                                                                                                                                                     \n" +
+                    "        _executeWorkingGroup();                                                                                                                                               \n" +
+                    "        glFragData = glData[localOutputID % glInvocationSize];                                                                                                                \n" +
                     "                                                                                                                                                                              \n" +
                     "    } else glFragData = _workGroupData0;                                                                                                                                      \n" +
                     "}                                                                                                                                                                             \n" +
@@ -632,7 +635,11 @@ glComputeProgram.prototype.compile = function()
     if(status)
     {
         this.__uniform_bufferSize           = this.createUniformVec2("_bufferSizeVec2");
-        this.__uniform_nInvocations         = this.createUniformInt("glNumInvocations");
+        this.__uniform_startInvocationID    = this.createUniformInt("glStartInvocationID");
+        this.__uniform_endInvocationID      = this.createUniformInt("glEndInvocationID");
+        this.__uniform_startWorkGroupID     = this.createUniformInt("glStartWorkGroupID");
+        this.__uniform_endWorkGroupID       = this.createUniformInt("glEndWorkGroupID");
+        this.__uniform_nWorkGroups          = this.createUniformInt("glNumWorkGroups");
         this.__uniform_workGroupSize        = this.createUniformInt("glWorkGroupSize");
         this.__uniform_workGroupSizeSquared = this.createUniformInt("_workGroupSizeSquared");
     }
@@ -673,8 +680,10 @@ glComputeProgram.prototype.loadAsync = function(computeShaderPath, completionHan
     });
 }
 
-glComputeProgram.prototype.__dispatch = function(computeTextureData, nInvocations, workGroupSize, workGroupSizeSquared)
+glComputeProgram.prototype.__dispatchRange = function(computeTextureData, startIndex, endIndex, workGroupSize, workGroupSizeSquared)
 {    
+    let nInvocations = (endIndex - startIndex + 1);
+    
     if(this.__invocationSize != null && nInvocations > 0)
     {
         let gl = this.__ctx.getGL();
@@ -689,18 +698,26 @@ glComputeProgram.prototype.__dispatch = function(computeTextureData, nInvocation
         
         this.__bind();
         
+        let startWorkGroupID = Math.floor((startIndex * this.__invocationSize) / (workGroupSizeSquared * workGroupSizeSquared));
+        let endWorkGroupID   = Math.floor((endIndex   * this.__invocationSize) / (workGroupSizeSquared * workGroupSizeSquared)); 
+        let nWorkGroups      = (endWorkGroupID - startWorkGroupID) + 1; 
+
+        computeTextureData.__descriptor.size = Math.max((endIndex + 1), computeTextureData.__descriptor.size);
         computeTextureData.__framebuffer.bind(computeTextureData.__framebufferAttachment);
         computeTextureData.__invalidated = false;
-        
-        this.__uniform_bufferSize.set(computeTextureData.getWidth(), computeTextureData.getHeight());
-        this.__uniform_workGroupSizeSquared.set(workGroupSizeSquared);
+
+        this.__uniform_nWorkGroups.set(nWorkGroups);
         this.__uniform_workGroupSize.set(workGroupSize);
-        this.__uniform_nInvocations.set(nInvocations);
+        this.__uniform_endWorkGroupID.set(endWorkGroupID);
+        this.__uniform_startWorkGroupID.set(startWorkGroupID);
+        this.__uniform_workGroupSizeSquared.set(workGroupSizeSquared);
+        this.__uniform_bufferSize.set(computeTextureData.getWidth(), computeTextureData.getHeight());
+        this.__uniform_startInvocationID.set(startIndex);
+        this.__uniform_endInvocationID.set(endIndex);
         
         this.__ctx.updateActiveProgram();                                                  
         this.__ctx.unbindVertexArray(); 
             
-        let nWorkGroups = Math.ceil(nInvocations / workGroupSize); 
         gl.drawArrays(gl.POINTS, 0, nWorkGroups);
 
         this.__ctx.bindFramebuffer(lastActiveFramebuffer);
@@ -711,15 +728,21 @@ glComputeProgram.prototype.__dispatch = function(computeTextureData, nInvocation
     }
 }
 
-glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations, nInvocationsPerWorkGroup)
-{   
+glComputeProgram.prototype.dispatchRange = function(computeTextureData, startIndex, nInvocations, nInvocationsPerWorkGroup)
+{
     if(this.__invocationSize != null && nInvocations > 0)
     {
         if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = 1;
 
-        computeTextureData.setCapacity(this.__invocationSize, nInvocations, nInvocationsPerWorkGroup);
-        this.__dispatch(computeTextureData, nInvocations, computeTextureData.__descriptor.workGroupSize, computeTextureData.__descriptor.workGroupSizeSquared)
+        let endIndex = (startIndex + nInvocations - 1);   
+        computeTextureData.reserve(this.__invocationSize, (endIndex + 1), nInvocationsPerWorkGroup);
+
+        this.__dispatchRange(computeTextureData, startIndex, endIndex, computeTextureData.__descriptor.workGroupSize, computeTextureData.__descriptor.workGroupSizeSquared)
     }
+}
+
+glComputeProgram.prototype.dispatch = function(computeTextureData, nInvocations, nInvocationsPerWorkGroup) {   
+    this.dispatchRange(computeTextureData, 0, nInvocations, nInvocationsPerWorkGroup);
 }
 
 glComputeProgram.prototype.bind = null;

@@ -89,7 +89,7 @@ let glContext = function(canvasID)
     this.__standardUniformsBlock.glNormalMatrix              = this.__standardUniformsBlock.createUniformMat3("glNormalMatrix",                 glUniformBlock.Precision.MEDIUMP, glMatrix4x4f.identityMatrix());
     this.__standardUniformsBlock.glTime                      = this.__standardUniformsBlock.createUniformFloat("glTime",                        glUniformBlock.Precision.MEDIUMP, 0.0);
     this.__standardUniformsBlock.glIsAnimationActive         = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",             glUniformBlock.Precision.LOWP,    0);
-    this.__standardUniformsBlock._glTextureDataDescriptors   = this.__standardUniformsBlock.createUniformArrayVec3("_glTextureDataDescriptors", glUniformBlock.Precision.MEDIUMP, maxTextureUnits, null);
+    this.__standardUniformsBlock._glTextureDataDescriptors   = this.__standardUniformsBlock.createUniformArrayVec4("_glTextureDataDescriptors", glUniformBlock.Precision.MEDIUMP, maxTextureUnits, null);
     
     this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 256, null);
     this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 256, null);
@@ -263,11 +263,11 @@ let glContext = function(canvasID)
                                "highp vec4 textureData(in samplerData s, in int invocationID, in int outputID)                                                                                                          \n" +
                                "{                                                                                                                                                                                       \n" +
                                "   ivec2 bufferSize = textureSize(s.sampler, 0);                                                                                                                                        \n" +
-                               "   ivec3 descriptor = ivec3(_glTextureDataDescriptors[s.unitID]);                                                                                                                       \n" +
+                               "   ivec4 descriptor = ivec4(_glTextureDataDescriptors[s.unitID]);                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "   int localSize = descriptor.x;                                                                                                                                                        \n" +
-                               "   int workGroupSize = descriptor.y;                                                                                                                                                    \n" +
-                               "   int workGroupSizeSquared = descriptor.z;                                                                                                                                             \n" +
+                               "   int localSize = descriptor.y;                                                                                                                                                        \n" +
+                               "   int workGroupSize = descriptor.z;                                                                                                                                                    \n" +
+                               "   int workGroupSizeSquared = descriptor.w;                                                                                                                                             \n" +
                                "                                                                                                                                                                                        \n" +
                                "   int workGroupID = int(floor(float(invocationID) / float(workGroupSize)));                                                                                                            \n" +
                                "   int localOutputID = (invocationID % workGroupSize) * localSize + outputID;                                                                                                           \n" +
@@ -276,7 +276,12 @@ let glContext = function(canvasID)
                                "   dataCoord += ivec2(localOutputID % workGroupSizeSquared, floor(float(localOutputID) / float(workGroupSizeSquared)));                                                                 \n" +
                                "                                                                                                                                                                                        \n" +
                                "   return texelFetch(s.sampler, dataCoord, 0);                                                                                                                                          \n" +
+                               "}                                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "highp int textureDataSize(in samplerData s) {                                                                                                                                           \n" +
+                               "    return int(_glTextureDataDescriptors[s.unitID].x);                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n");
+                               
 }
 
 glContext.__reservedUniformBlockUnits = 2;

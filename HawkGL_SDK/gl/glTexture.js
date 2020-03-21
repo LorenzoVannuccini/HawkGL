@@ -364,6 +364,7 @@ let glTextureData = function(ctx, localSize, capacity)
     
     this.__descriptor =
     {
+        size: 0,
         localSize: 0,
         workGroupSize: 0,
         workGroupSizeSquared: 0
@@ -375,7 +376,7 @@ let glTextureData = function(ctx, localSize, capacity)
     if(localSize == null) localSize = 1;
     if(capacity  == null) capacity  = 1;
     
-    this.setCapacity(localSize, capacity);
+    this.reserve(localSize, capacity);
 }
 
 glTextureData.prototype.__createAttachment = null; // abstract
@@ -427,7 +428,7 @@ glTextureData.__genCopyProgram = function(ctx, localSize)
     return program;
 }
 
-glTextureData.prototype.setCapacity = function(localSize, requestCapacity, nInvocationsPerWorkGroup)
+glTextureData.prototype.reserve = function(localSize, requestCapacity, nInvocationsPerWorkGroup)
 {
     let lastStateCapacity              = this.__capacity;
     let lastStateFramebuffer           = this.__framebuffer;
@@ -438,7 +439,7 @@ glTextureData.prototype.setCapacity = function(localSize, requestCapacity, nInvo
     let didResize = (localSize != this.__descriptor.localSize || requestCapacity > this.__capacity);
     if(didResize)
     {
-        let capacitySquared = nextPot(Math.ceil(Math.sqrt(requestCapacity * localSize)));
+        let capacitySquared = Math.max(nextPot(Math.ceil(Math.sqrt(requestCapacity * localSize))), 1);
         this.__capacity = Math.floor((capacitySquared * capacitySquared) / localSize);
         
         this.__resize(capacitySquared, capacitySquared);
@@ -458,12 +459,10 @@ glTextureData.prototype.setCapacity = function(localSize, requestCapacity, nInvo
         lastStateFrameBufferAttachment.bind(0);
 
         let copyProgram = glTextureData.__genCopyProgram(this.__ctx, this.__descriptor.localSize);
-        copyProgram.__dispatch(this, lastStateCapacity, workGroupSize, workGroupSizeSquared);
+        copyProgram.__dispatchRange(this, 0, lastStateCapacity, workGroupSize, workGroupSizeSquared);
         
         if(lastActiveTexture != null) this.__ctx.bindTexture(lastActiveTexture, 0);
         else lastStateFrameBufferAttachment.unbind();
-
-        console.log(this.__capacity + " -> (" + this.getWidth() + "x" + this.getHeight() + ")");
     }
 
     if(lastStateFramebuffer != null && lastStateFramebuffer != this.__framebuffer) lastStateFramebuffer.free();
@@ -482,6 +481,14 @@ glTextureData.prototype.free = function()
     }
 }
 
+glTextureData.prototype.invalidate = function()
+{
+    this.__framebuffer.invalidate();
+
+    this.__descriptor.size = 0;
+    this.__invalidated = true;
+}
+
 glTextureData.prototype.clear = function()
 {
     let gl = this.__ctx.getGL();
@@ -497,29 +504,33 @@ glTextureData.prototype.clear = function()
     gl.clearColor(lastClearColor[0], lastClearColor[1], lastClearColor[2], lastClearColor[3]);
     this.__ctx.bindFramebuffer(lastActiveFramebuffer);
 
-    this.__invalidated = true;
-}
-
-glTextureData.prototype.invalidate = function()
-{
-    this.__framebuffer.invalidate();
+    this.__descriptor.size = 0;
     this.__invalidated = true;
 }
 
 glTextureData.prototype.set = function(textureData)
 {
     this.__invalidated = true;
-    
-    this.setCapacity(textureData.__descriptor.localSize, textureData.__capacity);
-    this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
+    this.reserve(textureData.__descriptor.localSize, textureData.__capacity);
 
+    this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
+    this.__descriptor.size = textureData.size();
+    
     let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
     this.__framebuffer.bind(this.__framebufferAttachment);
       
     textureData.blit(this.__ctx.getGL().NEAREST);
-
+    
     this.__ctx.bindFramebuffer(lastActiveFramebuffer);
     this.__invalidated = false;
+}
+
+glTextureData.prototype.capacity = function() {
+    return this.__capacity;
+}
+
+glTextureData.prototype.size = function() {
+    return this.__descriptor.size;
 }
 
 glTextureData.prototype.getWidth = function() {
@@ -541,9 +552,6 @@ glTextureData.prototype.unbind = function() {
 glTextureData.prototype.blit = function(filter) {
     this.__framebufferAttachment.blit(((filter != null) ? filter : this.__ctx.getGL().NEAREST));
 }
-
-glTextureData.prototype.toImage = function(width, height, onLoad) {}
-glTextureData.prototype.toBase64 = function(width, height) {}
 
 // -------------------------------------------------------------------------------------------
 
