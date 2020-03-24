@@ -454,8 +454,7 @@ glProgram.prototype.getLastError = function()
         let errorInfo = glProgram.__parseShaderError(vsError, this.__headerLines);
         error += this.__vertexShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
     }
-        
-    if(fsError.length > 0)
+    else if(fsError.length > 0)
     {
         let errorInfo = glProgram.__parseShaderError(fsError, this.__headerLines);
         error += this.__fragmentShaderName + " Error" + ((errorInfo.line != null) ? (" at line " + errorInfo.line) : "") + ":" + errorInfo.message + "\n";
@@ -549,7 +548,7 @@ glComputeProgram.prototype.compile = function()
                     "uniform highp int glNumWorkGroups;                                                                                                                                            \n" +
                     "uniform highp int glWorkGroupSize;                                                                                                                                            \n" +
                     "uniform highp int glStartWorkGroupID;                                                                                                                                         \n" +
-                    "uniform highp int glEndWorkGroupID;                                                                                                                                         \n" +
+                    "uniform highp int glEndWorkGroupID;                                                                                                                                           \n" +
                     "uniform highp int _workGroupSizeSquared;                                                                                                                                      \n" +
                     "uniform highp int glStartInvocationID;                                                                                                                                        \n" +
                     "uniform highp int glEndInvocationID;                                                                                                                                          \n" +
@@ -571,9 +570,9 @@ glComputeProgram.prototype.compile = function()
                     "                                                                                                                                                                              \n" +
                     "    glLocalInvocationID = 0;                                                                                                                                                  \n" +
                     "    glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                           \n" +
-                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                             \n" +
+                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                         \n" +
                     "                                                                                                                                                                              \n" +
-                    "    if(glGlobalInvocationID >= glStartInvocationID && glGlobalInvocationID <= glEndInvocationID) _executeWorkingGroup();                                                       \n" +
+                    "    if(glGlobalInvocationID >= glStartInvocationID && glGlobalInvocationID <= glEndInvocationID) _executeWorkingGroup();                                                      \n" +
                     "    _workGroupData0 = glData[0];                                                                                                                                              \n" +
                     "                                                                                                                                                                              \n" +
                     "    gl_PointSize = float(_workGroupSizeSquared);                                                                                                                              \n" +
@@ -613,9 +612,9 @@ glComputeProgram.prototype.compile = function()
                     "                                                                                                                                                                              \n" +
                     "    glLocalInvocationID = int(floor(float(localOutputID) / float(glInvocationSize)));                                                                                         \n" +
                     "    glGlobalInvocationID = (glWorkGroupID * glWorkGroupSize + glLocalInvocationID);                                                                                           \n" +
-                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                             \n" +
+                    "    glNumInvocations = (glEndInvocationID - glStartInvocationID) + 1;                                                                                                         \n" +
                     "                                                                                                                                                                              \n" +
-                    "    if(glLocalInvocationID >= glWorkGroupSize || glGlobalInvocationID < glStartInvocationID || glGlobalInvocationID > glEndInvocationID) discard;                            \n" +
+                    "    if(glLocalInvocationID >= glWorkGroupSize || glGlobalInvocationID < glStartInvocationID || glGlobalInvocationID > glEndInvocationID) discard;                             \n" +
                     "    else if(localOutputID > 0)                                                                                                                                                \n" +
                     "    {                                                                                                                                                                         \n" +
                     "        _executeWorkingGroup();                                                                                                                                               \n" +
