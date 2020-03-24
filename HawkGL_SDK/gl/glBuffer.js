@@ -120,6 +120,10 @@ glIndexBuffer.prototype.size = function() {
     return this.__bufferData.length;
 }
 
+glIndexBuffer.prototype.at = function(index) {
+    return this.__bufferData[index];
+}
+
 glIndexBuffer.prototype.getType = function() {
     return this.__type;
 }
