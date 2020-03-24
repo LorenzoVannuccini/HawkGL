@@ -23,6 +23,8 @@
 
 let glVertex = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
 {
+    this.__is_glVertex = true;
+    
     this.position  = new glVector3f(px, py, pz);
     this.texCoord  = new glVector2f(tc_u, tc_v);
     this.normal    = new glVector3f(nx, ny, nz);
@@ -44,12 +46,27 @@ glVertex.clone = function(other)
 {
     let vertex = new glVertex();
     
-    vertex.position          = new glVector3f(other.position);
-    vertex.texCoord          = new glVector2f(other.texCoord);
-    vertex.normal            = new glVector3f(other.normal);
-    vertex.bonesWeights      = new glVector4f(other.bonesWeights);
-    vertex.bonesIndices      = other.bonesIndices.slice(0);
+    vertex.position.set(other.position);
+    vertex.texCoord.set(other.texCoord);
+    vertex.normal.set(other.normal);
+    vertex.bonesWeights.set(other.bonesWeights);
+    vertex.bonesIndices = other.bonesIndices.slice(0);
     vertex.animationMatrixID = other.animationMatrixID;
+    
+    return vertex;
+}
+
+glVertex.prototype.set = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
+{
+    let other = px;
+    if(!other.__is_glVertex) other = new glVertex(px, py, pz, tc_u, tc_v, nx, ny, nz);
+
+    this.position.set(other.position);
+    this.texCoord.set(other.texCoord);
+    this.normal.set(other.normal);
+    this.bonesWeights.set(other.bonesWeights);
+    this.bonesIndices = other.bonesIndices.slice(0);
+    this.animationMatrixID = other.animationMatrixID;
     
     return vertex;
 }

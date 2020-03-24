@@ -461,7 +461,7 @@ glTextureData.prototype.reserve = function(localSize, requestCapacity, nInvocati
         let copyProgram = glTextureData.__genCopyProgram(this.__ctx, this.__descriptor.localSize);
         copyProgram.__dispatchRange(this, 0, lastStateCapacity, workGroupSize, workGroupSizeSquared);
         
-        if(lastActiveTexture != null) this.__ctx.bindTexture(lastActiveTexture, 0);
+        if(lastActiveTexture != null) this.__ctx.bindTexture(0, lastActiveTexture);
         else lastStateFrameBufferAttachment.unbind();
     }
 
