@@ -365,12 +365,12 @@ let glTextureData = function(ctx, localSize, capacity)
     this.__descriptor =
     {
         size: 0,
+        capacity: 0,
         localSize: 0,
         workGroupSize: 0,
         workGroupSizeSquared: 0
     };
 
-    this.__capacity = 0;
     this.__invalidated = true;
         
     if(localSize == null) localSize = 1;
@@ -430,17 +430,17 @@ glTextureData.__genCopyProgram = function(ctx, localSize)
 
 glTextureData.prototype.reserve = function(localSize, requestCapacity, nInvocationsPerWorkGroup)
 {
-    let lastStateCapacity              = this.__capacity;
     let lastStateFramebuffer           = this.__framebuffer;
     let lastStateFrameBufferAttachment = this.__framebufferAttachment;
+    let lastStateCapacity              = this.__descriptor.capacity;
     
     if(nInvocationsPerWorkGroup == null) nInvocationsPerWorkGroup = this.__descriptor.workGroupSize;
     
-    let didResize = (localSize != this.__descriptor.localSize || requestCapacity > this.__capacity);
+    let didResize = (localSize != this.__descriptor.localSize || requestCapacity > this.__descriptor.capacity);
     if(didResize)
     {
         let capacitySquared = Math.max(nextPot(Math.ceil(Math.sqrt(requestCapacity * localSize))), 1);
-        this.__capacity = Math.floor((capacitySquared * capacitySquared) / localSize);
+        this.__descriptor.capacity = Math.floor((capacitySquared * capacitySquared) / localSize);
         
         this.__resize(capacitySquared, capacitySquared);
     }
@@ -511,7 +511,7 @@ glTextureData.prototype.clear = function()
 glTextureData.prototype.set = function(textureData)
 {
     this.__invalidated = true;
-    this.reserve(textureData.__descriptor.localSize, textureData.__capacity);
+    this.reserve(textureData.__descriptor.localSize, textureData.__descriptor.capacity);
 
     this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
     this.__descriptor.size = textureData.size();
@@ -525,12 +525,16 @@ glTextureData.prototype.set = function(textureData)
     this.__invalidated = false;
 }
 
-glTextureData.prototype.capacity = function() {
-    return this.__capacity;
-}
-
 glTextureData.prototype.size = function() {
     return this.__descriptor.size;
+}
+
+glTextureData.prototype.capacity = function() {
+    return this.__descriptor.capacity;
+}
+
+glTextureData.prototype.localSize = function() {
+    return this.__descriptor.localSize;
 }
 
 glTextureData.prototype.getWidth = function() {

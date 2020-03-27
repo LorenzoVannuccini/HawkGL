@@ -327,14 +327,14 @@ glProgram.prototype.update = function()
                 let boundDescriptor = textureDataDescriptors[textureUnitID];
                 let descriptor = dataTexture.__descriptor;
                 
-                let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.size          ||
+                let shouldUpdateDescriptor = ( boundDescriptor.x != descriptor.capacity      ||
                                                boundDescriptor.y != descriptor.localSize     || 
                                                boundDescriptor.z != descriptor.workGroupSize || 
                                                boundDescriptor.w != descriptor.workGroupSizeSquared );
 
                 if(shouldUpdateDescriptor)
                 {
-                    boundDescriptor.x = descriptor.size;
+                    boundDescriptor.x = descriptor.capacity;
                     boundDescriptor.y = descriptor.localSize;
                     boundDescriptor.z = descriptor.workGroupSize;
                     boundDescriptor.w = descriptor.workGroupSizeSquared;
