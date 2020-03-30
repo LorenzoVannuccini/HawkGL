@@ -445,9 +445,9 @@ glTextureData.prototype.reserve = function(localSize, requestCapacity, nInvocati
         this.__resize(capacitySquared, capacitySquared);
     }
 
-    let workGroupSizeSquared = Math.min(Math.max(nextPot(Math.sqrt(localSize * nInvocationsPerWorkGroup)), 1), this.getWidth());
+    let workGroupSizeSquared = Math.min(Math.min(Math.max(nextPot(Math.sqrt(localSize * nInvocationsPerWorkGroup)), 1), this.getWidth()), this.__ctx.getMaxPointSize());
     let workGroupSize = Math.max(Math.floor((workGroupSizeSquared * workGroupSizeSquared) / localSize), 1);
-
+    
     let didLayoutChange = (workGroupSize != this.__descriptor.workGroupSize || workGroupSizeSquared != this.__descriptor.workGroupSizeSquared);
     
     let shouldCopyLastState = (!this.__invalidated && (didResize || didLayoutChange));

@@ -698,7 +698,7 @@ glComputeProgram.prototype.__dispatchRange = function(computeTextureData, startI
         this.__bind();
         
         let startWorkGroupID = Math.floor((startIndex * this.__invocationSize) / (workGroupSizeSquared * workGroupSizeSquared));
-        let endWorkGroupID   = Math.floor((endIndex   * this.__invocationSize) / (workGroupSizeSquared * workGroupSizeSquared)); 
+        let endWorkGroupID   = Math.ceil((endIndex    * this.__invocationSize) / (workGroupSizeSquared * workGroupSizeSquared)); 
         let nWorkGroups      = (endWorkGroupID - startWorkGroupID) + 1; 
 
         computeTextureData.__descriptor.size = Math.max((endIndex + 1), computeTextureData.__descriptor.size);
@@ -716,7 +716,7 @@ glComputeProgram.prototype.__dispatchRange = function(computeTextureData, startI
         
         this.__ctx.updateActiveProgram();                                                  
         this.__ctx.unbindVertexArray(); 
-            
+        
         gl.drawArrays(gl.POINTS, 0, nWorkGroups);
 
         this.__ctx.bindFramebuffer(lastActiveFramebuffer);

@@ -77,7 +77,7 @@ let glContext = function(canvasID)
     let maxFragTextureUnits = this.__gl.getParameter(this.__gl.MAX_TEXTURE_IMAGE_UNITS);
     let maxVertTextureUnits = this.__gl.getParameter(this.__gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS);
     let maxTextureUnits = Math.max(maxVertTextureUnits, maxFragTextureUnits);
-
+    
     // let maxUniformBlockUnits = this.__gl.getParameter(this.__gl.MAX_UNIFORM_BUFFER_BINDINGS);
 
     this.__standardUniformsBlock  = new glUniformBlock(this, "glStandardUniformsBlock");
@@ -659,8 +659,18 @@ glContext.prototype.getTextureMaxAnisotropy = function()
     return this.__maxAnisotropyLevel;
 }
 
-glContext.prototype.getMaxSamplesMSAA = function() {
-    return this.getGL().getParameter(this.getGL().MAX_SAMPLES);
+glContext.prototype.getMaxSamplesMSAA = function()
+{
+    if(this.__maxSamplesMSAA == null) this.__maxSamplesMSAA = this.getGL().getParameter(this.getGL().MAX_SAMPLES);
+
+    return this.__maxSamplesMSAA;
+}
+
+glContext.prototype.getMaxPointSize = function()
+{
+    if(this.__maxPointSize == null) this.__maxPointSize = this.getGL().getParameter(this.getGL().ALIASED_POINT_SIZE_RANGE)[1];
+    
+    return this.__maxPointSize;
 }
 
 glContext.prototype.__bindProgramStandardAttributes = function(programID)
