@@ -67,8 +67,6 @@ glVertex.prototype.set = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
     this.bonesWeights.set(other.bonesWeights);
     this.bonesIndices = other.bonesIndices.slice(0);
     this.animationMatrixID = other.animationMatrixID;
-    
-    return vertex;
 }
 
 glVertex.prototype.toFloat32Array = function()
