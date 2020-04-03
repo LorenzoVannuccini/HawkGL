@@ -24,14 +24,16 @@
 let glVertex = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
 {
     this.__is_glVertex = true;
-    
-    this.position  = new glVector3f(px, py, pz);
-    this.texCoord  = new glVector2f(tc_u, tc_v);
-    this.normal    = new glVector3f(nx, ny, nz);
+
+    this.position  = new glVector3f();
+    this.texCoord  = new glVector2f();
+    this.normal    = new glVector3f();
     
     this.bonesWeights = new glVector4f(0.0);
     this.bonesIndices = [-1, -1, -1, -1];
     this.animationMatrixID = -1;
+
+    if(px != null) this.set(px, py, pz, tc_u, tc_v, nx, ny, nz);
 }
 
 glVertex.nComponents = function() {
@@ -42,31 +44,60 @@ glVertex.sizeBytes = function() {
     return (41 + 3); // 3 padding bytes (total size must be a multiple of 4)
 }
 
-glVertex.clone = function(other)
-{
-    let vertex = new glVertex();
-    
-    vertex.position.set(other.position);
-    vertex.texCoord.set(other.texCoord);
-    vertex.normal.set(other.normal);
-    vertex.bonesWeights.set(other.bonesWeights);
-    vertex.bonesIndices = other.bonesIndices.slice(0);
-    vertex.animationMatrixID = other.animationMatrixID;
-    
-    return vertex;
-}
-
 glVertex.prototype.set = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
 {
-    let other = px;
-    if(!other.__is_glVertex) other = new glVertex(px, py, pz, tc_u, tc_v, nx, ny, nz);
+    let bw_x = 0.0;
+    let bw_y = 0.0;
+    let bw_z = 0.0;
+    let bw_w = 0.0;
 
-    this.position.set(other.position);
-    this.texCoord.set(other.texCoord);
-    this.normal.set(other.normal);
-    this.bonesWeights.set(other.bonesWeights);
-    this.bonesIndices = other.bonesIndices.slice(0);
-    this.animationMatrixID = other.animationMatrixID;
+    let bi_0 = -1;
+    let bi_1 = -1;
+    let bi_2 = -1;
+    let bi_3 = -1;
+    
+    let amID = -1;
+    
+    if(px.__is_glVertex)
+    {
+        let other = px;
+
+        px = other.position.x;
+        py = other.position.y;
+        pz = other.position.z;
+        
+        tc_u = other.texCoord.x;
+        tc_v = other.texCoord.y;
+        
+        nx = other.normal.x;
+        ny = other.normal.y;
+        nz = other.normal.z;
+
+        bw_x = other.bonesWeights.x;
+        bw_y = other.bonesWeights.y;
+        bw_z = other.bonesWeights.z;
+        bw_w = other.bonesWeights.w;  
+
+        bi_0 = other.bonesIndices[0];
+        bi_1 = other.bonesIndices[1];
+        bi_2 = other.bonesIndices[2];
+        bi_3 = other.bonesIndices[3];   
+        
+        amID = other.animationMatrixID;
+    }
+    
+    this.position.set(px, py, pz);
+    this.texCoord.set(tc_u, tc_v);
+    this.normal.set(nx, ny, nz);
+
+    this.bonesWeights.set(bw_x, bw_y, bw_z, bw_w);
+
+    this.bonesIndices[0] = bi_0;
+    this.bonesIndices[1] = bi_1;
+    this.bonesIndices[2] = bi_2;
+    this.bonesIndices[3] = bi_3;
+    
+    this.animationMatrixID = amID;
 }
 
 glVertex.prototype.toFloat32Array = function()

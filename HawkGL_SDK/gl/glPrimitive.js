@@ -160,7 +160,7 @@ glPrimitive.prototype.add = function(vertexData)
         let baseIndex = this.size();
         
         this.__vertices.length += nVertices;
-        for(let i = 0; i != nVertices; ++i) this.__vertices[baseIndex + i] = glVertex.clone(vertexData[i]);
+        for(let i = 0; i != nVertices; ++i) this.__vertices[baseIndex + i] = new glVertex(vertexData[i]);
         
         this.__shouldUpdate = this.__shouldUpdateVolume = true;
     }
