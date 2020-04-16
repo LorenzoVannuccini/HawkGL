@@ -39,11 +39,11 @@ glFramebufferAttachment.prototype.free = function()
 }
 
 glFramebufferAttachment.prototype.getWidth = function() {
-    return this.__renderTexture.getWidth();
+    return this.__framebufferObject.getWidth();
 }
 
 glFramebufferAttachment.prototype.getHeight = function() {
-    return this.__renderTexture.getHeight();
+    return this.__framebufferObject.getHeight();
 }
 
 glFramebufferAttachment.prototype.bind = function(slotID)
@@ -194,24 +194,24 @@ glFramebufferColorAttachment.prototype.toBase64 = function(width, height) {
 
 // -------------------------------------------------------------------------------------------
 
-let glFramebufferColorAttachmentRGBA8 = function(ctx, framebuffer, attachmentID, w, h) {
-    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, new glTextureRGBA8(ctx, w, h));
+let glFramebufferColorAttachmentRGBA8 = function(ctx, framebuffer, attachmentID, w, h, renderTexture) {
+    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, ((renderTexture != null) ? renderTexture : new glTextureRGBA8(ctx, w, h)));
 }
 
 glFramebufferColorAttachmentRGBA8.prototype = Object.create(glFramebufferColorAttachment.prototype);
 
 // -------------------------------------------------------------------------------------------
 
-let glFramebufferColorAttachmentRGBA16F = function(ctx, framebuffer, attachmentID, w, h) {
-    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, new glTextureRGBA16F(ctx, w, h));
+let glFramebufferColorAttachmentRGBA16F = function(ctx, framebuffer, attachmentID, w, h, renderTexture) {
+    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, ((renderTexture != null) ? renderTexture : new glTextureRGBA16F(ctx, w, h)));
 }
 
 glFramebufferColorAttachmentRGBA16F.prototype = Object.create(glFramebufferColorAttachment.prototype);
 
 // -------------------------------------------------------------------------------------------
 
-let glFramebufferColorAttachmentRGBA32F = function(ctx, framebuffer, attachmentID, w, h) {
-    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, new glTextureRGBA32F(ctx, w, h));
+let glFramebufferColorAttachmentRGBA32F = function(ctx, framebuffer, attachmentID, w, h, renderTexture) {
+    glFramebufferColorAttachment.call(this, ctx, framebuffer, attachmentID, ((renderTexture != null) ? renderTexture : new glTextureRGBA32F(ctx, w, h)));
 }
 
 glFramebufferColorAttachmentRGBA32F.prototype = Object.create(glFramebufferColorAttachment.prototype);
@@ -315,69 +315,65 @@ glFramebuffer.prototype.unbind = function() {
     this.__ctx.unbindFramebuffer();
 }
 
-glFramebuffer.prototype.__createColorAttachment = function(attachmentConstructor, mipID)
+glFramebuffer.prototype.__createColorAttachment = function(attachmentConstructor, renderTexture, mipID)
 {
-    if(mipID == null) mipID = 0;
-
     let attachmentID = this.__colorAttachments.length;
 
     let nMaxColorAttachments = 16;  // TODO: query from GL
     if(attachmentID >= nMaxColorAttachments) return null; // TODO: handle exception
 
-    let attachment = new attachmentConstructor(this.__ctx, this, attachmentID, this.__width * Math.pow(0.5, mipID), this.__height * Math.pow(0.5, mipID));
-
+    let attachment = new attachmentConstructor(this.__ctx, this, attachmentID, this.__width, this.__height, renderTexture);
+    
     let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
     this.bind();
     
     let gl = this.__ctx.getGL();
     this.__colorAttachments.push(attachment);
 
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + attachmentID, gl.TEXTURE_2D, attachment.getRenderTextureID(), mipID);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + attachmentID, gl.TEXTURE_2D, attachment.getRenderTextureID(), ((mipID != null) ? mipID : 0));
     this.__ctx.bindFramebuffer(lastActiveFramebuffer);
     
     return attachment;
 }
 
-glFramebuffer.prototype.createColorAttachmentRGBA8 = function(mipID) {
-    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA8, mipID);
+glFramebuffer.prototype.createColorAttachmentRGBA8 = function(renderTexture, mipID) {
+    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA8, renderTexture, mipID);
 }
 
-glFramebuffer.prototype.createColorAttachmentRGBA16F = function(mipID) {
-    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA16F, mipID);
+glFramebuffer.prototype.createColorAttachmentRGBA16F = function(renderTexture, mipID) {
+    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA16F, renderTexture, mipID);
 }
 
-glFramebuffer.prototype.createColorAttachmentRGBA32F = function(mipID) {
-    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA32F, mipID);
+glFramebuffer.prototype.createColorAttachmentRGBA32F = function(renderTexture, mipID) {
+    return this.__createColorAttachment(glFramebufferColorAttachmentRGBA32F, renderTexture, mipID);
 }
 
-glFramebuffer.prototype.__createDepthAttachment = function(attachmentConstructor, mipID)
+glFramebuffer.prototype.__createDepthAttachment = function(attachmentConstructor, renderTexture, mipID)
 {
-    if(mipID == null) mipID = 0;
-
-    let attachment = new attachmentConstructor(this.__ctx, this, this.__width * Math.pow(0.5, mipID), this.__height * Math.pow(0.5, mipID));
-
+    let attachment = new attachmentConstructor(this.__ctx, this, this.__width, this.__height, renderTexture);
+    
     let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
     this.bind();
         
     let gl = this.__ctx.getGL();
     this.__depthAttachment = attachment;
 
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, attachment.getRenderTextureID(), mipID);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, attachment.getRenderTextureID(), ((mipID != null) ? mipID : 0));
     this.__ctx.bindFramebuffer(lastActiveFramebuffer);
    
     return attachment;    
 }
 
-glFramebuffer.prototype.createDepthAttachment16 = function(mipID) {
-    return this.__createDepthAttachment(glFramebufferDepthAttachment16, mipID);  
+glFramebuffer.prototype.createDepthAttachment16 = function(renderTexture, mipID) {
+    return this.__createDepthAttachment(glFramebufferDepthAttachment16, renderTexture, mipID);  
 }
 
-glFramebuffer.prototype.createDepthAttachment24 = function(mipID) {
-    return this.__createDepthAttachment(glFramebufferDepthAttachment24, mipID);  
+glFramebuffer.prototype.createDepthAttachment24 = function(renderTexture, mipID) {
+    return this.__createDepthAttachment(glFramebufferDepthAttachment24, renderTexture, mipID);  
 }
 
-glFramebuffer.prototype.createDepthAttachment32F = function(mipID) {
-    return this.__createDepthAttachment(glFramebufferDepthAttachment32F, mipID);  
+glFramebuffer.prototype.createDepthAttachment32F = function(renderTexture, mipID) {
+    return this.__createDepthAttachment(glFramebufferDepthAttachment32F, renderTexture, mipID);  
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------------
