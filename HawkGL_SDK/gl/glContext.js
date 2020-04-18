@@ -281,7 +281,51 @@ let glContext = function(canvasID)
                                "highp int textureDataSize(in samplerData s) {                                                                                                                                           \n" +
                                "    return int(_glTextureDataDescriptors[s.unitID].x);                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n");
-                               
+    
+    this.__appendShadingHeader("mediump vec4 textureRadiance(in sampler2D environmentMap, in vec3 n, in float roughness)                       \n" +
+                               "{                                                                                                              \n" +
+                               "    mediump ivec2 size = textureSize(environmentMap, 0);                                                       \n" +
+                               "                                                                                                               \n" +
+                               "    mediump float mipLevels = (1.0 + floor(log2(float(max(size.x, size.y)))));                                 \n" +
+                               "    mediump float radianceLUT_mipID = mipLevels - 10.0; // 512x LOD                                            \n" +
+                               "                                                                                                               \n" +
+                               "    const mediump float texelSize = (0.25 / 128.0);                                                            \n" +
+                               "    mediump vec2 uv = vec2(atan(n.z, n.x) * 0.1591 + 0.5, asin(n.y) * 0.3183 + 0.5);                           \n" +
+                               "                                                                                                               \n" +
+                               "    mediump vec2 uv_lut = mix(vec2(0.0 + texelSize), vec2(0.25) - 0.5 * texelSize, uv);                        \n" +
+                               "                                                                                                               \n" +
+                               "    mediump int mapID_base = int(floor(15.0 * roughness));                                                     \n" +
+                               "    mediump int mapID_next = int(ceil(15.0 * roughness));                                                      \n" +
+                               "                                                                                                               \n" +
+                               "    mediump vec2 uv_base = uv_lut + vec2(0.25 * float(mapID_base % 4), 0.25 * floor(float(mapID_base) / 4.0)); \n" +
+                               "    mediump vec2 uv_next = uv_lut + vec2(0.25 * float(mapID_next % 4), 0.25 * floor(float(mapID_next) / 4.0)); \n" +
+                               "                                                                                                               \n" +
+                               "    mediump vec4 base = textureLod(environmentMap, uv_base, radianceLUT_mipID);                                \n" +
+                               "    mediump vec4 next = textureLod(environmentMap, uv_next, radianceLUT_mipID);                                \n" +
+                               "                                                                                                               \n" +
+                               "    mediump float roughnessSquared = roughness * roughness;                                                    \n" +
+                               "                                                                                                               \n" +
+                               "    mediump vec4 radiance = mix(base, next, mod(roughness * 15.0, 1.0));                                       \n" +
+                               "    radiance = mix(textureLod(environmentMap, uv, 0.0), radiance, smoothstep(0.01, 0.0625, roughnessSquared)); \n" +        
+                               "                                                                                                               \n" +
+                               "    return radiance;                                                                                           \n" +
+                               "}                                                                                                              \n" +
+                               "                                                                                                               \n" +
+                               "mediump vec4 textureIrradiance(in sampler2D environmentMap, in vec3 n)                                         \n" +
+                               "{                                                                                                              \n" +
+                               "    mediump ivec2 size = textureSize(environmentMap, 0);                                                       \n" +
+                               "                                                                                                               \n" +
+                               "    mediump float mipLevels = (1.0 + floor(log2(float(max(size.x, size.y)))));                                 \n" +
+                               "    mediump float radianceLUT_mipID = mipLevels - 10.0; // 512x LOD                                            \n" +
+                               "                                                                                                               \n" +
+                               "    const mediump float texelSize = (0.25 / 128.0);                                                            \n" +
+                               "    mediump vec2 uv = vec2(atan(n.z, n.x) * 0.1591 + 0.5, asin(n.y) * 0.3183 + 0.5);                           \n" +
+                               "                                                                                                               \n" +
+                               "    mediump vec2 uv_lut = mix(vec2(0.0 + texelSize), vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.75);           \n" +
+                               "    mediump vec4 irradiance = textureLod(environmentMap, uv_lut, radianceLUT_mipID);                           \n" +
+                               "                                                                                                               \n" +
+                               "    return irradiance;                                                                                         \n" +
+                               "}                                                                                                              \n");
 }
 
 glContext.__reservedUniformBlockUnits = 2;
@@ -649,6 +693,20 @@ glContext.prototype.createTexture = function(image, onLoad, customWidth, customH
     } else setTextureFromImage(texture, image, onLoad);
     
     return texture;
+}
+
+glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, customHeight)
+{
+    let environmentMap = new glEnvironmentMap(this, this.createTexture(image, function()
+    {
+        environmentMap.update();
+        environmentMap.updateRadiance();
+
+        if(onLoad != null) onLoad(environmentMap);
+
+    }, customWidth, customHeight ));
+
+    return environmentMap;
 }
 
 glContext.prototype.getTextureMaxAnisotropy = function()

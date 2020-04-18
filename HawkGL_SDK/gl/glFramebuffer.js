@@ -180,10 +180,6 @@ glFramebufferColorAttachment.prototype.getAttachmentID = function() {
     return this.__attachmentID;
 }
 
-glFramebufferColorAttachment.prototype.generateMipmap = function(enableAnisotropicFiltering) {
-    return this.__renderTexture.generateMipmap(enableAnisotropicFiltering);
-}
-
 glFramebufferColorAttachment.prototype.toImage = function(width, height, onLoad) {
     return this.__renderTexture.toImage(width, height, onLoad);
 }
