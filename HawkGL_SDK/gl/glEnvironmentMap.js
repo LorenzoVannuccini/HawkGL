@@ -415,6 +415,9 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
 
         this.__radianceSolverProgram.runPostProcess();
         
+        this.__radianceIntegral[lastStateID].unbind();
+        this.__radianceResolved[lastStateID].unbind();
+
         this.__radianceLutFramebuffer.bind([this.__radianceLUT]);
         this.__radianceResolved[currentStateID].blit();
         
