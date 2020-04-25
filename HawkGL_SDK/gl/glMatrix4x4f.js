@@ -280,9 +280,8 @@ glMatrix4x4f.invertible = function(matrix)
     result[3] = -(m[1] * d23 - m[5] * d13 + m[9]  * d12);
 
     let det = m[0] * result[0] + m[4] * result[1] + m[8] * result[2] + m[12] * result[3];
-    let epsilon = 0.0000001;
 
-    return (Math.abs(det) > epsilon);
+    return (Math.abs(det) > 0.0);
 }
 
 glMatrix4x4f.inverse = function(matrix)
@@ -305,9 +304,8 @@ glMatrix4x4f.inverse = function(matrix)
     result[3] = -(m[1] * d23 - m[5] * d13 + m[9]  * d12);
 
     let det = m[0] * result[0] + m[4] * result[1] + m[8] * result[2] + m[12] * result[3];
-    let epsilon = 0.0000001;
 
-    if(Math.abs(det) > epsilon)
+    if(Math.abs(det) > 0.0)
     {
        let invDet = 1.0 / det;
        

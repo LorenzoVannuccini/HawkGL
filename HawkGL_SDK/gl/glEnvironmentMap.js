@@ -116,18 +116,14 @@ glEnvironmentMap.__genEnvMappingProgram = function(ctx)
                                      "const float PI_2      = PI * 2.0;                                                                                              \n" +
                                      "const float PI_OVER_2 = PI * 0.5;                                                                                              \n" +
                                      "                                                                                                                               \n" +
-                                     "vec3 uvToPolar(in vec2 uv)                                                                                                     \n" +
-                                     "{                                                                                                                              \n" +
-                                     "    uv = uv;                                                                                                                   \n" +
-                                     "                                                                                                                               \n" +
-                                     "    float phi   = PI * uv.y;                                                                                                   \n" +
-                                     "    float theta = PI_2 * uv.x - PI_OVER_2;                                                                                     \n" +
-                                     "                                                                                                                               \n" +
-                                     "    float sinPhi = sin(phi);                                                                                                   \n" +
-                                     "                                                                                                                               \n" +
-                                     "    return normalize(vec3(-sin(theta) * sinPhi, -cos(phi), -cos(theta) * sinPhi));                                             \n" +
-                                     "}                                                                                                                              \n" +
-                                     "                                                                                                                               \n" +
+                                     "vec3 uvToPolar(in vec2 uv)                                                                                                                                                                                      \n" +
+                                     "{                                                                                                                                                                                                               \n" +
+                                     "    float phi = PI * uv.y;                                                                                                                                                                                      \n" +
+                                     "    float theta = PI_2 * uv.x;                                                                                                                                                                                  \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "    return normalize(vec3(-cos(theta) * sin(phi), -cos(phi), -sin(theta) * sin(phi)));                                                                                                                          \n" +
+                                     "}                                                                                                                                                                                                               \n" +
+                                     "                                                                                                                                                                                                                \n" +
                                      "void main()                                                                                                                    \n" +
                                      "{                                                                                                                              \n" +
                                      "    vec4 patchUV = (glProjectionMatrix * mat4(glNormalMatrix)) * vec4(uvToPolar(texCoords), 1.0);                              \n" +
