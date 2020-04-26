@@ -28,7 +28,7 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     
     if(size == null) size = Math.max(skyMap.getWidth(), skyMap.getHeight());
     size = Math.min(Math.max(closestPot(size), 1024), 4096);
-
+    
     let halfSize = Math.floor(size * 0.5);
 
     this.__envMappingProgram = glEnvironmentMap.__genEnvMappingProgram(ctx);
@@ -53,27 +53,31 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__environmentFramebuffer = new glFramebuffer(ctx, size, size);
     this.__environmentMap = this.__environmentFramebuffer.createColorAttachmentRGBA16F();
     this.__environmentMap.setWrapMode(gl.CLAMP_TO_EDGE);
-    this.__environmentMap.generateMipmap(true);
+    this.__environmentMap.generateMipmap(false);
     
     this.__radianceLutFramebuffer = new glFramebuffer(ctx, 512, 512);
     let mipLod_512x = (1 + Math.floor(Math.log2(Math.max(this.__environmentMap.getWidth(), this.__environmentMap.getHeight())))) - 10; 
     this.__radianceLUT = this.__radianceLutFramebuffer.createColorAttachmentRGBA16F(this.__environmentMap.__renderTexture, mipLod_512x);
-           
+    
     this.__radianceFramebuffer = [new glFramebuffer(ctx, 512, 512), new glFramebuffer(ctx, 512, 512)];
-    this.__radianceIntegralIterationID = 0;
     this.__radianceIntegral = [null, null];
     this.__radianceResolved = [null, null];
+    this.__radianceSmoothed = [null, null];
+    this.__radianceIntegralIterationID = 0;
     
     for(let i = 0; i < 2; ++i)
     {
         this.__radianceIntegral[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA32F();
         this.__radianceResolved[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA16F();
+        this.__radianceSmoothed[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA16F();
 
         this.__radianceIntegral[i].setFilterMode(gl.LINEAR, gl.LINEAR);
         this.__radianceResolved[i].setFilterMode(gl.LINEAR, gl.LINEAR);
+        this.__radianceSmoothed[i].setFilterMode(gl.LINEAR, gl.LINEAR);
 
         this.__radianceIntegral[i].setWrapMode(gl.CLAMP_TO_EDGE);
         this.__radianceResolved[i].setWrapMode(gl.CLAMP_TO_EDGE);
+        this.__radianceSmoothed[i].setWrapMode(gl.CLAMP_TO_EDGE);
     }
     
     this.__onDrawCallback = onDrawCallback;
@@ -284,6 +288,7 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "precision mediump float;                                                                                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
+                                     "uniform mediump sampler2D progressiveBuffer;                                                                                                                                                                    \n" +
                                      "uniform mediump sampler2D integralBuffer;                                                                                                                                                                       \n" +
                                      "uniform mediump sampler2D radianceBuffer;                                                                                                                                                                       \n" +
                                      "uniform mediump sampler2D environmentMap;                                                                                                                                                                       \n" +
@@ -295,8 +300,9 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "in vec2 texCoords;                                                                                                                                                                                              \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "layout(location = 0) out lowp vec4 integration;                                                                                                                                                                 \n" +
-                                     "layout(location = 1) out lowp vec4 resolvedRadiance;                                                                                                                                                            \n" +
+                                     "layout(location = 0) out mediump vec4 integration;                                                                                                                                                              \n" +
+                                     "layout(location = 1) out mediump vec4 resolvedRadiance;                                                                                                                                                         \n" +
+                                     "layout(location = 2) out mediump vec4 progressiveRadiance;                                                                                                                                                      \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "const float PI        = 3.1415926535897932384626433832795;                                                                                                                                                      \n" +
                                      "const float PI_2      = PI * 2.0;                                                                                                                                                                               \n" +
@@ -372,8 +378,9 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "{                                                                                                                                                                                                               \n" +
                                      "    vec2 texCoords = texCoords * 4.0;                                                                                                                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    integration      = ((iterationID > 0) ? texelFetch(integralBuffer, ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                                    \n" +
-                                     "    resolvedRadiance = ((iterationID > 0) ? texelFetch(radianceBuffer, ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                                    \n" +
+                                     "    integration         = ((iterationID > 0) ? texelFetch(integralBuffer,    ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
+                                     "    resolvedRadiance    = ((iterationID > 0) ? texelFetch(radianceBuffer,    ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
+                                     "    progressiveRadiance = ((iterationID > 0) ? texelFetch(progressiveBuffer, ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    float mapID = (floor(gl_FragCoord.x / 128.0) + 4.0 * floor(gl_FragCoord.y / 128.0));                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
@@ -382,16 +389,13 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "    vec3 normal = uvToPolar(mod(texCoords, vec2(1.0)));                                                                                                                                                         \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    float mipLevels = textureLods(environmentMap);                                                                                                                                                              \n" +
-                                     "    uint radianceLUT_mipID = uint(mipLevels - 10.0); // 512x512                                                                                                                                                 \n" +
                                      "    int sky_mip32_lod = max(int(textureLods(skyMap)) - 6, 0); // 32x32                                                                                                                                          \n" +
                                      "    uvec2 sky_mip32_size = uvec2(textureSize(skyMap, sky_mip32_lod));                                                                                                                                           \n" +
-                                     "    uint nLightEstimationSamples = (sky_mip32_size.x * sky_mip32_size.y);                                                                                                                                       \n" +
+                                     "    uint nLightEstimationSamples = (sky_mip32_size.x * sky_mip32_size.y); // 1024                                                                                                                               \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    float lod = max(mipLevels - mix(8.0, 5.0, sqrt(roughness)), 0.0);                                                                                                                                           \n" +
-                                     "    if(uint(lod) == radianceLUT_mipID) ++lod;                                                                                                                                                                   \n" +
+                                     "    float lod = max(textureLods(environmentMap) - mix(8.0, 5.0, sqrt(roughness)), 0.0);                                                                                                                         \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    uint nSamples = max(uint(1024.0 * roughnessSquared), 1u);                                                                                                                                                   \n" +
+                                     "    uint nSamples = ((gl_FragCoord.x >= 2.0 || gl_FragCoord.y >= 1.0) ? max(uint(1024.0 * roughnessSquared), 1u) : nLightEstimationSamples);                                                                    \n" +
                                      "    uint nSamplesPerFrame = ((gl_FragCoord.x >= 2.0 || gl_FragCoord.y >= 1.0) ? max(uint(float(samplesPerFrame) * roughnessSquared), 1u) : uint(samplesPerFrame));                                              \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    for(uint i = 0u; i < nSamplesPerFrame; ++i)                                                                                                                                                                 \n" +
@@ -412,7 +416,7 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                integration += radianceSample * weight;                                                                                                                                                         \n" +                      
                                      "            }                                                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "            if(nSamples == 1u || (sampleID > 0u && sampleID % nSamples == (nSamples - 1u)))                                                                                                                     \n" +
+                                     "            if(nSamples == 1u || sampleID > 0u && sampleID % nSamples == (nSamples - 1u))                                                                                                                                         \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                integration /= texelFetch(integralPDF, ivec2(gl_FragCoord), 0);                                                                                                                                 \n" +
                                      "                resolvedRadiance = vec4(linearSpaceToGamma(integration.rgb), integration.a);                                                                                                                    \n" +
@@ -430,7 +434,7 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            integration.xyz += ((gl_FragCoord.x < 1.0) ? vec3((vec2(uv) + 0.5) / vec2(sky_mip32_size), 0.0) : radianceSample) * weight;                                                                         \n" +
                                      "            integration.w += weight;                                                                                                                                                                            \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "            if(sampleID > 0u && sampleID % nLightEstimationSamples == (nLightEstimationSamples - 1u))                                                                                                           \n" +
+                                     "            if(nSamples == 1u || sampleID > 0u && sampleID % nSamples == (nSamples - 1u))                                                                                                                                         \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                resolvedRadiance = vec4(((integration.w > 0.0) ? (integration.xyz / integration.w) : vec3(0.0)) , 1.0);                                                                                         \n" +
                                      "                if(gl_FragCoord.x < 1.0) resolvedRadiance.xyz = -uvToPolar(resolvedRadiance.xy);                                                                                                                \n" +
@@ -439,6 +443,8 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "    }                                                                                                                                                                                                           \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "    progressiveRadiance += (resolvedRadiance - progressiveRadiance) * sqrt(float(nSamplesPerFrame) / float(nSamples));                                                                                          \n" +
                                      "}                                                                                                                                                                                                               \n");
                         
         program.compile();
@@ -448,6 +454,7 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
         program.createUniformSampler("environmentMap",    2);
         program.createUniformSampler("integralBuffer",    3);
         program.createUniformSampler("radianceBuffer",    4);
+        program.createUniformSampler("progressiveBuffer", 5);
         program.createUniformInt("samplesPerFrame",      16);
         program.createUniformInt("iterationID",           0);
         
@@ -543,7 +550,7 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
 
         if(nSamples == null) nSamples = 1024;
         this.__radianceSamplesPerFrameUniform.set(nSamples);
-               
+
         if(this.__onDrawCallback != null)
         {
             this.__skyMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
@@ -560,30 +567,34 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
         this.__environmentMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR); 
         this.__environmentMap.bind(2);
         
-        this.__radianceIterationCountUniform.set(this.__radianceIntegralIterationID++);
+        this.__radianceIterationCountUniform.set(this.__radianceIntegralIterationID);
         
         let currentStateID = (this.__radianceIntegralIterationID) % 2;
         let lastStateID = (currentStateID + 1) % 2;
         
         this.__radianceIntegral[lastStateID].bind(3);
         this.__radianceResolved[lastStateID].bind(4);
-        
+        this.__radianceSmoothed[lastStateID].bind(5);
+
         this.__radianceFramebuffer[currentStateID].bind([ this.__radianceIntegral[currentStateID],
-                                                          this.__radianceResolved[currentStateID] ]);
+                                                          this.__radianceResolved[currentStateID],
+                                                          this.__radianceSmoothed[currentStateID] ]);
 
         this.__radianceSolverProgram.runPostProcess();
         
         this.__radianceIntegral[lastStateID].unbind();
         this.__radianceResolved[lastStateID].unbind();
-
+        this.__radianceSmoothed[lastStateID].unbind();
+            
         this.__radianceLutFramebuffer.bind([this.__radianceLUT]);
-        this.__radianceResolved[currentStateID].blit();
+        this.__radianceSmoothed[currentStateID].blit();
         
         this.__ctx.bindFramebuffer(activeFramebuffer);
         this.__ctx.setViewport(currentViewport.x, currentViewport.y, currentViewport.w, currentViewport.h);
         this.__ctx.bindProgram(activeProgram);
 
         this.__pendingRadianceIntegrationSteps = Math.max(this.__pendingRadianceIntegrationSteps - nSamples, 0);
+        ++this.__radianceIntegralIterationID;
     }
 }
 
