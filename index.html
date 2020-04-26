@@ -79,8 +79,8 @@
         let shadowPassFramebuffer = new glFramebuffer(ctx, 1024, 1024);
         let shadowMap = shadowPassFramebuffer.createDepthAttachment24();
 
-        let forwardPassFrameBuffer          = null; 
-        let forwardPassRenderTextureColor   = null;
+        let forwardPassFrameBuffer        = null; 
+        let forwardPassRenderTextureColor = null;
 
         ctx.onInit( function(gl)
         { 

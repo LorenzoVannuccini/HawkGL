@@ -34,11 +34,11 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__envMappingProgram = glEnvironmentMap.__genEnvMappingProgram(ctx);
     this.__skyMapIntensityUniform = this.__envMappingProgram.getUniform("skyMapIntensity");
     
+    this.__radianceIntegralPDF = glEnvironmentMap.__genRadianceIntegralPDF_LUT(ctx);
     this.__radianceSolverProgram = glEnvironmentMap.__genRadianceSolverProgram(ctx);
-    this.__radianceIntegrationSamplesUniform = this.__radianceSolverProgram.getUniform("integrationSamples");
     this.__radianceSamplesPerFrameUniform = this.__radianceSolverProgram.getUniform("samplesPerFrame");
     this.__radianceIterationCountUniform = this.__radianceSolverProgram.getUniform("iterationID");
-    this.__pendingRadianceIntegrationSteps = this.__radianceIntegrationSamplesUniform.get();
+    this.__pendingRadianceIntegrationSteps = 1024;
 
     this.__faceFramebuffer = new glFramebuffer(ctx, halfSize, halfSize);
     this.__faceMap = this.__faceFramebuffer.createColorAttachmentRGBA16F();
@@ -147,6 +147,120 @@ glEnvironmentMap.__genEnvMappingProgram = function(ctx)
     return program;
 }
 
+glEnvironmentMap.__genRadianceIntegralPDF_LUT = function(ctx)
+{
+    if(glEnvironmentMap.__radiancePdfLUT_instances == null) glEnvironmentMap.__radiancePdfLUT_instances = new Map();
+
+    let pdfLUT_texture = glEnvironmentMap.__radiancePdfLUT_instances.get(ctx);
+    if(pdfLUT_texture == null) 
+    {
+        let program = new glProgram(ctx, "#version 300 es                            \n" +
+                                         "                                           \n" +
+                                         "precision highp float;                     \n" +
+                                         "                                           \n" +
+                                         "out vec2 texCoords;                        \n" +
+                                         "                                           \n" +
+                                         "void main()                                \n" +
+                                         "{                                          \n" +
+                                         "    texCoords = glTexCoord;                \n" +
+                                         "    gl_Position = vec4(glVertex.xyz, 1.0); \n" +
+                                         "}                                          \n",
+
+                                         "#version 300 es                                                                                                                                                                                                 \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "precision mediump float;                                                                                                                                                                                        \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "in vec2 texCoords;                                                                                                                                                                                              \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "layout(location = 0) out lowp vec4 pdf;                                                                                                                                                                         \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "const float PI        = 3.1415926535897932384626433832795;                                                                                                                                                      \n" +
+                                         "const float PI_2      = PI * 2.0;                                                                                                                                                                               \n" +
+                                         "const float PI_OVER_2 = PI * 0.5;                                                                                                                                                                               \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "vec3 uvToPolar(in vec2 uv)                                                                                                                                                                                      \n" +
+                                         "{                                                                                                                                                                                                               \n" +
+                                         "    float phi = PI * uv.y;                                                                                                                                                                                      \n" +
+                                         "    float theta = PI_2 * uv.x;                                                                                                                                                                                  \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    return normalize(vec3(-cos(theta) * sin(phi), -cos(phi), -sin(theta) * sin(phi)));                                                                                                                          \n" +
+                                         "}                                                                                                                                                                                                               \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "float RadicalInverse_VdC(uint bits)                                                                                                                                                                             \n" +
+                                         "{                                                                                                                                                                                                               \n" +
+                                         "    bits = (bits << 16u) | (bits >> 16u);                                                                                                                                                                       \n" +
+                                         "    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);                                                                                                                                         \n" +
+                                         "    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);                                                                                                                                         \n" +
+                                         "    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);                                                                                                                                         \n" +
+                                         "    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);                                                                                                                                         \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    return float(bits) * 2.3283064365386963e-10; // / 0x100000000                                                                                                                                               \n" +
+                                         "}                                                                                                                                                                                                               \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "vec2 Hammersley(uint i, uint N) {                                                                                                                                                                               \n" +
+                                         "    return vec2(float(i) / float(N), RadicalInverse_VdC(i));                                                                                                                                                    \n" +
+                                         "}                                                                                                                                                                                                               \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)                                                                                                                                                      \n" +
+                                         "{                                                                                                                                                                                                               \n" +
+                                         "    float a = roughness*roughness;                                                                                                                                                                              \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    float phi = 2.0 * PI * Xi.x;                                                                                                                                                                                \n" +
+                                         "    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));                                                                                                                                           \n" +
+                                         "    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);                                                                                                                                                             \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    // from spherical coordinates to cartesian coordinates                                                                                                                                                      \n" +
+                                         "    vec3 H;                                                                                                                                                                                                     \n" +
+                                         "    H.x = cos(phi) * sinTheta;                                                                                                                                                                                  \n" +
+                                         "    H.y = sin(phi) * sinTheta;                                                                                                                                                                                  \n" +
+                                         "    H.z = cosTheta;                                                                                                                                                                                             \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    // from tangent-space vector to world-space sample vector                                                                                                                                                   \n" +
+                                         "    const vec3 up  = vec3(0.0, 1.0, 0.0);                                                                                                                                                                       \n" +
+                                         "    vec3 tangent   = normalize(cross(up, N));                                                                                                                                                                   \n" +
+                                         "    vec3 bitangent = cross(N, tangent);                                                                                                                                                                         \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;                                                                                                                                                 \n" +
+                                         "    return normalize(sampleVec);                                                                                                                                                                                \n" +
+                                         "}                                                                                                                                                                                                               \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "void main()                                                                                                                                                                                                     \n" +
+                                         "{                                                                                                                                                                                                               \n" +
+                                         "    pdf = vec4(0.0);                                                                                                                                                                                            \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    vec2 texCoords = texCoords * 4.0;                                                                                                                                                                           \n" +
+                                         "    float mapID = (floor(gl_FragCoord.x / 128.0) + 4.0 * floor(gl_FragCoord.y / 128.0));                                                                                                                        \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    float roughness = (mapID / 15.0);                                                                                                                                                                           \n" +
+                                         "    float roughnessSquared = (roughness * roughness);                                                                                                                                                           \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    vec3 normal = uvToPolar(mod(texCoords, vec2(1.0)));                                                                                                                                                         \n" +
+                                         "    uint nSamples = max(uint(1024.0 * roughnessSquared), 1u);                                                                                                                                                   \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "    for(uint i = 0u; i < nSamples; ++i)                                                                                                                                                                         \n" +
+                                         "    {                                                                                                                                                                                                           \n" +
+                                         "        vec2 Xi = Hammersley(i % nSamples, nSamples);                                                                                                                                                           \n" +
+                                         "        vec3 V  = ImportanceSampleGGX(Xi, normal, roughness);                                                                                                                                                   \n" +
+                                         "                                                                                                                                                                                                                \n" +
+                                         "        pdf += vec4(max(dot(normal, V), 0.0));                                                                                                                                                                  \n" +
+                                         "    }                                                                                                                                                                                                           \n" +
+                                         "}                                                                                                                                                                                                               \n");
+                        
+        program.compile();
+        
+        let framebuffer = new glFramebuffer(ctx, 512, 512);
+        pdfLUT_texture = framebuffer.createColorAttachmentRGBA32F();
+       
+        framebuffer.bind([pdfLUT_texture]);
+        program.runPostProcess();
+        framebuffer.unbind();
+
+        glEnvironmentMap.__radiancePdfLUT_instances.set(ctx, pdfLUT_texture);
+    }
+
+    return pdfLUT_texture;
+}
+
 glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
 {
     if(glEnvironmentMap.__radianceSolverProgramInstances == null) glEnvironmentMap.__radianceSolverProgramInstances = new Map();
@@ -173,9 +287,9 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "uniform mediump sampler2D integralBuffer;                                                                                                                                                                       \n" +
                                      "uniform mediump sampler2D radianceBuffer;                                                                                                                                                                       \n" +
                                      "uniform mediump sampler2D environmentMap;                                                                                                                                                                       \n" +
+                                     "uniform mediump sampler2D integralPDF;                                                                                                                                                                          \n" +
                                      "uniform mediump sampler2D skyMap;                                                                                                                                                                               \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "uniform int integrationSamples;                                                                                                                                                                                 \n" +
                                      "uniform int samplesPerFrame;                                                                                                                                                                                    \n" +
                                      "uniform int iterationID;                                                                                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
@@ -270,17 +384,15 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "    float mipLevels = textureLods(environmentMap);                                                                                                                                                              \n" +
                                      "    uint radianceLUT_mipID = uint(mipLevels - 10.0); // 512x512                                                                                                                                                 \n" +
-                                     "    int sky_mip32_lod = max(int(textureLods(skyMap)) - 6, 0); // 32x32                                                                                                                                                  \n" +
+                                     "    int sky_mip32_lod = max(int(textureLods(skyMap)) - 6, 0); // 32x32                                                                                                                                          \n" +
                                      "    uvec2 sky_mip32_size = uvec2(textureSize(skyMap, sky_mip32_lod));                                                                                                                                           \n" +
                                      "    uint nLightEstimationSamples = (sky_mip32_size.x * sky_mip32_size.y);                                                                                                                                       \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    float lod = max(mipLevels - mix(8.0, 5.0, sqrt(roughness)), 0.0);                                                                                                                                           \n" +
                                      "    if(uint(lod) == radianceLUT_mipID) ++lod;                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    uint nSamples = max(uint(float(integrationSamples) * roughnessSquared), 1u);                                                                                                                                \n" +
+                                     "    uint nSamples = max(uint(1024.0 * roughnessSquared), 1u);                                                                                                                                                   \n" +
                                      "    uint nSamplesPerFrame = ((gl_FragCoord.x >= 2.0 || gl_FragCoord.y >= 1.0) ? max(uint(float(samplesPerFrame) * roughnessSquared), 1u) : uint(samplesPerFrame));                                              \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "    float correctionPDF = 1.0; // 0.525;                                                                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    for(uint i = 0u; i < nSamplesPerFrame; ++i)                                                                                                                                                                 \n" +
                                      "    {                                                                                                                                                                                                           \n" +
@@ -294,14 +406,18 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            float weight = dot(normal, V);                                                                                                                                                                      \n" +
                                      "            if(weight > 0.0)                                                                                                                                                                                    \n" +
                                      "            {                                                                                                                                                                                                   \n" +
-                                     "                vec3 radianceSample = gammaSpaceToLinear(textureSphereLod(environmentMap, V, lod).rgb);                                                                                                         \n" +
-                                     "                integration.rgb = mix(integration.rgb, radianceSample * weight * mix(1.0, 2.0, correctionPDF * roughnessSquared), 1.0 / (integration.a += mix(weight, 1.0, correctionPDF * roughnessSquared))); \n" +                      
+                                     "                vec4 radianceSample = textureSphereLod(environmentMap, V, lod);                                                                                                                                 \n" +
+                                     "                radianceSample.rgb = gammaSpaceToLinear(radianceSample.rgb);                                                                                                                                    \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "                integration += radianceSample * weight;                                                                                                                                                         \n" +                      
                                      "            }                                                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "            if(nSamples == 1u || (sampleID > 0u && sampleID % nSamples == (nSamples - 1u)))                                                                                                                     \n" +
                                      "            {                                                                                                                                                                                                   \n" +
-                                     "                resolvedRadiance = vec4(linearSpaceToGamma(integration.rgb * mix(1.0, 0.75, roughness)), 1.0);                                                                                                  \n" +
-                                     "                integration.a = 0.0;                                                                                                                                                                            \n" +
+                                     "                integration /= texelFetch(integralPDF, ivec2(gl_FragCoord), 0);                                                                                                                                 \n" +
+                                     "                resolvedRadiance = vec4(linearSpaceToGamma(integration.rgb), integration.a);                                                                                                                    \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "                integration = vec4(0.0);                                                                                                                                                                        \n" +
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "        else                                                                                                                                                                                                    \n" +
@@ -327,12 +443,12 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                         
         program.compile();
         
-        program.createUniformInt("integrationSamples", 1024);
-        program.createUniformInt("samplesPerFrame",      16);
         program.createUniformSampler("skyMap",            0);
-        program.createUniformSampler("environmentMap",    1);
-        program.createUniformSampler("integralBuffer",    2);
-        program.createUniformSampler("radianceBuffer",    3);
+        program.createUniformSampler("integralPDF",       1);
+        program.createUniformSampler("environmentMap",    2);
+        program.createUniformSampler("integralBuffer",    3);
+        program.createUniformSampler("radianceBuffer",    4);
+        program.createUniformInt("samplesPerFrame",      16);
         program.createUniformInt("iterationID",           0);
         
         glEnvironmentMap.__radianceSolverProgramInstances.set(ctx, program);
@@ -412,7 +528,7 @@ glEnvironmentMap.prototype.update = function(position, nFacesUpdates)
     this.__ctx.setViewport(currentViewport.x, currentViewport.y, currentViewport.w, currentViewport.h);
     this.__ctx.bindProgram(activeProgram);
     
-    this.__pendingRadianceIntegrationSteps = this.__radianceIntegrationSamplesUniform.get();
+    this.__pendingRadianceIntegrationSteps = 1024;
 }
 
 glEnvironmentMap.prototype.updateRadiance = function(nSamples)
@@ -425,7 +541,7 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
         let activeProgram     = this.__ctx.getActiveProgram();
         let activeFramebuffer = this.__ctx.getActiveFramebuffer();
 
-        if(nSamples == null) nSamples = this.__radianceIntegrationSamplesUniform.get();
+        if(nSamples == null) nSamples = 1024;
         this.__radianceSamplesPerFrameUniform.set(nSamples);
                
         if(this.__onDrawCallback != null)
@@ -439,16 +555,18 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
             this.__environmentMap.bind(0);
         }
 
+        this.__radianceIntegralPDF.bind(1);
+
         this.__environmentMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR); 
-        this.__environmentMap.bind(1);
+        this.__environmentMap.bind(2);
         
         this.__radianceIterationCountUniform.set(this.__radianceIntegralIterationID++);
         
         let currentStateID = (this.__radianceIntegralIterationID) % 2;
         let lastStateID = (currentStateID + 1) % 2;
         
-        this.__radianceIntegral[lastStateID].bind(2);
-        this.__radianceResolved[lastStateID].bind(3);
+        this.__radianceIntegral[lastStateID].bind(3);
+        this.__radianceResolved[lastStateID].bind(4);
         
         this.__radianceFramebuffer[currentStateID].bind([ this.__radianceIntegral[currentStateID],
                                                           this.__radianceResolved[currentStateID] ]);
