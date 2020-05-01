@@ -928,8 +928,8 @@ glContext.prototype.run = function()
         {
             self.__animationFrameRequestID = glContext.__requestAnimationFrame(animationLoop);
 
-            let targetWidth  = self.__canvas.clientWidth;
-            let targetHeight = self.__canvas.clientHeight;
+            let targetWidth  = Math.round(self.__canvas.clientWidth  * window.devicePixelRatio);
+            let targetHeight = Math.round(self.__canvas.clientHeight * window.devicePixelRatio);
 
             if(self.__streamCapturing)
             {
