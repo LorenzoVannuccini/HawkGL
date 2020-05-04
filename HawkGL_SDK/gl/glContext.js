@@ -47,6 +47,8 @@ let glContext = function(canvasID)
     this.__contextWidth  = -1;
     this.__contextHeight = -1;
 
+    this.enableHiDPI(false);
+
     this.__uniformRectMesh = glMesh.createRectangle(this, 2.0, 2.0);
     
     this.__projectionMatrix = glMatrix4x4f.identityMatrix();
@@ -928,9 +930,9 @@ glContext.prototype.run = function()
         {
             self.__animationFrameRequestID = glContext.__requestAnimationFrame(animationLoop);
 
-            let targetWidth  = Math.round(self.__canvas.clientWidth  * window.devicePixelRatio);
-            let targetHeight = Math.round(self.__canvas.clientHeight * window.devicePixelRatio);
-
+            let targetWidth  = Math.max(Math.round(self.getClientWidth()  * self.getPixelRatio()), 1);
+            let targetHeight = Math.max(Math.round(self.getClientHeight() * self.getPixelRatio()), 1);
+            
             if(self.__streamCapturing)
             {
                 targetWidth  = self.__streamCapturingWidth;
@@ -1131,6 +1133,10 @@ glContext.prototype.getTimeElapsed = function() {
     return this.__timeElapsed;
 }
 
+glContext.prototype.enableHiDPI = function(flag) {
+    this.__enableSuperSamplingHiDPI = flag;
+}
+
 glContext.prototype.getWidth = function() {
     return Math.max(this.__contextWidth, 1);
 }
@@ -1149,6 +1155,10 @@ glContext.prototype.getClientHeight = function() {
 
 glContext.prototype.getAspectRatio = function() {
     return (this.getWidth() / this.getHeight());
+}
+
+glContext.prototype.getPixelRatio = function() {
+    return Math.min(window.devicePixelRatio, (this.__enableSuperSamplingHiDPI ? window.devicePixelRatio : 1.0));
 }
 
 glContext.prototype.setViewport = function(x, y, w, h)

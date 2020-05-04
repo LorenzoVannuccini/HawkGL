@@ -218,8 +218,8 @@ glArcBallCamera.prototype.drag = function(x, y)
 {            
     y = (this.__ctx.getClientHeight() - y);
 
-    x = (x / this.__ctx.getClientWidth())  * this.__ctx.getWidth();
-    y = (y / this.__ctx.getClientHeight()) * this.__ctx.getHeight();
+    x = (x / this.__ctx.getClientWidth())  * this.__ctx.getWidth()  / this.__ctx.getPixelRatio();
+    y = (y / this.__ctx.getClientHeight()) * this.__ctx.getHeight() / this.__ctx.getPixelRatio();
     
     let rect = this.__sphereToScreenRect(new glVector3f(0.0), this.__radius);
 
