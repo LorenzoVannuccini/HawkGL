@@ -1291,6 +1291,16 @@ glContext.prototype.unbindVertexArray = function() {
     this.bindVertexArray(null);
 }
 
+glContext.prototype.drawBuffers = function(attachmentsMask)
+{
+    this.__activeDrawBuffers = attachmentsMask.slice(0);
+    this.__gl.drawBuffers(attachmentsMask);
+}
+
+glContext.prototype.getActiveDrawBuffers = function() {
+    return ((this.__activeDrawBuffers != null) ? this.__activeDrawBuffers.slice(0) : [this.getGL().NONE]);
+}
+
 glContext.prototype.bindFramebuffer = function(framebuffer) {
     if(!this.isFramebufferBound(framebuffer)) this.__gl.bindFramebuffer(this.__gl.FRAMEBUFFER, (this.__activeFramebuffer = framebuffer));
 }

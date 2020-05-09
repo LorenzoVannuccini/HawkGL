@@ -61,13 +61,31 @@ glFramebufferAttachment.prototype.__blit = function(x0, y0, x1, y1, mask, attach
 {
     let gl = this.__ctx.getGL();
 
+    let dstAttachments = [gl.BACK];
+    if(this.__ctx.__activeFramebuffer != null)
+    {
+        let dstAttachmentMatchesSource = false;
+        dstAttachments = this.__ctx.getActiveDrawBuffers();
+        
+        for(let i = 0, e = dstAttachments.length; (i != e && !dstAttachmentMatchesSource); ++i) {
+            dstAttachmentMatchesSource = (dstAttachments[i] == attachment);
+        }
+
+        if(dstAttachmentMatchesSource) for(let i = 0, e = dstAttachments.length; i != e; ++i) {
+            if(dstAttachments[i] != attachment) dstAttachments[i] = gl.NONE;       
+        }
+    }
+
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.__framebuffer);
+    gl.drawBuffers(dstAttachments);
     gl.readBuffer(attachment);
             
     gl.blitFramebuffer(0, 0, this.getWidth(), this.getHeight(), x0, y0, x1, y1, mask, filter);
 
     if(attachment != gl.NONE) gl.readBuffer(gl.NONE);
+
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.__ctx.__activeFramebuffer);
+    gl.drawBuffers(((this.__ctx.__activeFramebuffer != null) ? this.__ctx.getActiveDrawBuffers() : [gl.BACK]));
 }
 
 glFramebufferAttachment.prototype.getRenderTextureID = function() {
@@ -277,7 +295,7 @@ glFramebuffer.prototype.bind = function(attachments)
         }   
     }
 
-    gl.drawBuffers(mask);
+    this.__ctx.drawBuffers(mask);
 }
 
 glFramebuffer.prototype.invalidate = function(attachments)
@@ -415,13 +433,31 @@ glRenderbufferAttachment.prototype.__blit = function(x0, y0, x1, y1, mask, attac
 {
     let gl = this.__ctx.getGL();
 
+    let dstAttachments = [gl.BACK];
+    if(this.__ctx.__activeFramebuffer != null)
+    {
+        let dstAttachmentMatchesSource = false;
+        dstAttachments = this.__ctx.getActiveDrawBuffers();
+        
+        for(let i = 0, e = dstAttachments.length; (i != e && !dstAttachmentMatchesSource); ++i) {
+            dstAttachmentMatchesSource = (dstAttachments[i] == attachment);
+        }
+
+        if(dstAttachmentMatchesSource) for(let i = 0, e = dstAttachments.length; i != e; ++i) {
+            if(dstAttachments[i] != attachment) dstAttachments[i] = gl.NONE;       
+        }
+    }
+
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.__framebuffer);
+    gl.drawBuffers(dstAttachments);
     gl.readBuffer(attachment);
             
     gl.blitFramebuffer(0, 0, this.getWidth(), this.getHeight(), x0, y0, x1, y1, mask, filter);
 
     if(attachment != gl.NONE) gl.readBuffer(gl.NONE);
+
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.__ctx.__activeFramebuffer);
+    gl.drawBuffers(((this.__ctx.__activeFramebuffer != null) ? this.__ctx.getActiveDrawBuffers() : [gl.BACK]));
 }
 
 glRenderbufferAttachment.prototype.getRenderBufferID = function() {

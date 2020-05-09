@@ -109,7 +109,7 @@
         camera.setOrientation(new glVector3f(0.0, 1.0, 0.0), 45.0);
 
         glCanvas.onmousedown = glCanvas.onmousemove = function(e) {
-            if(e.buttons > 0) camera.drag(e.clientX, e.clientY);
+            if(e.buttons > 0) camera.drag(e.clientX * ctx.getPixelRatio(), e.clientY * ctx.getPixelRatio());
         }
 
         glCanvas.onmouseup = function(e) {
