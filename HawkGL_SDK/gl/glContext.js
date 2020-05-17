@@ -501,6 +501,21 @@ glContext.prototype.createProgram = function(vertexSrcUrl, fragmentSrcUrl, onLoa
     return program;
 }
 
+glContext.prototype.createComputeProgram = function(programSrcUrl, onLoad)
+{
+    let self = this;
+    let program = new glComputeProgram(this);
+
+    this.__pendingAssets.push();
+    program.loadAsync(programSrcUrl, function(program, didCompile, error)
+    {
+        self.__pendingAssets.pop();
+        if(onLoad != null) onLoad(program, didCompile, error);    
+    });
+
+    return program;
+}
+
 glContext.__prepareImageForTexturing = function(image, onLoad)
 {
     let canvas = document.createElement('canvas');
