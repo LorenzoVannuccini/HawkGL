@@ -67,8 +67,8 @@ let glContext = function(canvasID)
     this.__activeTextures = [];
 
     this.__extensions =  {
-        blendableTextureFloat:    this.__gl.getExtension("EXT_float_blend"),
         renderableTextureFloat:   this.__gl.getExtension("EXT_color_buffer_float"),
+        blendableTextureFloat:    this.__gl.getExtension("EXT_float_blend"),
         textureFloatLinearFilter: this.__gl.getExtension("OES_texture_float_linear"),
         anisotropicFilter:        this.__gl.getExtension("EXT_texture_filter_anisotropic")
     };
