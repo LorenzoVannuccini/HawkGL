@@ -428,6 +428,96 @@ glTextureData.__genCopyProgram = function(ctx, localSize)
     return program;
 }
 
+glTextureData.__genMeshToTextureProgram = function(ctx)
+{
+    if(glTextureData.__meshToTextureInstances == null) glTextureData.__meshToTextureInstances = new Map();
+
+    let program = glTextureData.__meshToTextureInstances.get(ctx);
+    if(program == null) 
+    {
+        program = new glProgram(ctx, "#version 300 es                                                                                              \n" +
+                                     "precision highp float;                                                                                       \n" +
+                                     "                                                                                                             \n" +
+                                     "uniform int accessorID;                                                                                      \n" +
+                                     "uniform float squaredSize;                                                                                   \n" +
+                                     "                                                                                                             \n" +
+                                     "flat out vec4 accessorData;                                                                                  \n" +
+                                     "                                                                                                             \n" +
+                                     "void main()                                                                                                  \n" +
+                                     "{                                                                                                            \n" +
+                                     "    const int nAccessors = 2;                                                                                \n" +
+                                     "    int invocationID = gl_VertexID * nAccessors + accessorID;                                                \n" +
+                                     "                                                                                                             \n" +
+                                     "    switch(accessorID)                                                                                       \n" +
+                                     "    {                                                                                                        \n" +
+                                     "        case 0: accessorData = vec4(glVertex, glTexCoord.x);  break;                                         \n" +
+                                     "        case 1: accessorData = vec4(glNormal, glTexCoord.y);  break;                                         \n" +
+                                     "    }                                                                                                        \n" +
+                                     "                                                                                                             \n" +
+                                     "    gl_Position = vec4(invocationID % int(squaredSize), floor(float(invocationID) / squaredSize), 0.0, 1.0); \n" +
+                                     "    gl_Position.xy = vec2(-1.0) + 2.0 * ((gl_Position.xy + vec2(0.5)) / squaredSize);                        \n" +
+                                     "    gl_PointSize = 1.0;                                                                                      \n" +
+                                     "}                                                                                                            \n",
+                                     
+                                     "#version 300 es                           \n" +
+                                     "precision highp float;                    \n" +
+                                     "                                          \n" +                                                                                                                            
+                                     "flat in vec4 accessorData;                \n" +
+                                     "layout(location = 0) out highp vec4 data; \n" +
+                                     "                                          \n" +
+                                     "void main() {                             \n" +
+                                     "    data = accessorData;                  \n" +                                                                                    
+                                     "}                                         \n");
+
+        if(!program.compile()) console.error(program.getLastError());
+        program.createUniformFloat("squaredSize");
+        program.createUniformInt("accessorID");
+        
+        glTextureData.__meshToTextureInstances.set(ctx, program);
+    }
+
+    return program;
+}
+
+glTextureData.__genMeshToTextureDataProgram = function(ctx)
+{
+    if(glTextureData.__meshToTextureDataInstances == null) glTextureData.__meshToTextureDataInstances = new Map();
+
+    let program = glTextureData.__meshToTextureDataInstances.get(ctx);
+    if(program == null) 
+    {
+        program = new glComputeProgram(ctx, "#version 300 es                                                                                            \n" +
+                                            "                                                                                                           \n" +
+                                            "precision highp int;                                                                                       \n" +
+                                            "precision highp float;                                                                                     \n" +
+                                            "                                                                                                           \n" +
+                                            "uniform sampler2D geoTexture;                                                                              \n" +
+                                            "                                                                                                           \n" +
+                                            "local_size(2)                                                                                              \n" +
+                                            "                                                                                                           \n" +
+                                            "void main()                                                                                                \n" +
+                                            "{                                                                                                          \n" +
+                                            "   const int nAccessors = 2;                                                                               \n" +
+                                            "                                                                                                           \n" +
+                                            "   ivec2 tSize = textureSize(geoTexture, 0);                                                               \n" +
+                                            "   int invocationID = (glGlobalInvocationID * nAccessors);                                                 \n" +
+                                            "                                                                                                           \n" +
+                                            "   ivec2 accessor0 = ivec2((invocationID + 0) % tSize.x, floor(float(invocationID + 0) / float(tSize.x))); \n" +
+                                            "   ivec2 accessor1 = ivec2((invocationID + 1) % tSize.x, floor(float(invocationID + 1) / float(tSize.x))); \n" +
+                                            "                                                                                                           \n" +
+                                            "   glData[0] = texelFetch(geoTexture, accessor0, 0);                                                       \n" +                      
+                                            "   glData[1] = texelFetch(geoTexture, accessor1, 0);                                                       \n" +
+                                            "}                                                                                                          \n");
+                    
+        if(!program.compile()) console.error(program.getLastError());
+        program.createUniformSamplerData("geoTexture", 0);                    
+        
+        glTextureData.__meshToTextureDataInstances.set(ctx, program);
+    }
+
+    return program;
+}
+
 glTextureData.prototype.reserve = function(localSize, requestCapacity, nInvocationsPerWorkGroup)
 {
     let lastStateFramebuffer           = this.__framebuffer;
@@ -508,21 +598,81 @@ glTextureData.prototype.clear = function()
     this.__invalidated = true;
 }
 
+glTextureData.fromMesh = function(ctx, mesh, meshTextureData)
+{
+    let gl = ctx.getGL();
+
+    let currentViewport   = ctx.getViewport();
+    let activeProgram     = ctx.getActiveProgram();
+    let activeFramebuffer = ctx.getActiveFramebuffer();
+
+    let meshToTextureProgram     = glTextureData.__genMeshToTextureProgram(ctx);
+    let meshToTextureDataProgram = glTextureData.__genMeshToTextureDataProgram(ctx);
+
+    let uniformSquaredSize = meshToTextureProgram.getUniform("squaredSize");
+    let uniformAccessorID  = meshToTextureProgram.getUniform("accessorID");
+    
+    mesh = new glPrimitive(ctx, mesh.__vertices);
+
+    for(let vertexIndex = 0, e = mesh.size(); vertexIndex != e; ++vertexIndex) {
+        mesh.__vertices[vertexIndex].bonesIndices[0] = vertexIndex; // enforce vertices duplication
+    }
+    
+    let nAccessors = 2;
+    let squaredSize = nextPot(Math.ceil(Math.sqrt(mesh.size() * nAccessors)));
+
+    let framebuffer = new glFramebuffer(ctx, squaredSize, squaredSize);
+    let meshTexture = framebuffer.createColorAttachmentRGBA32F();
+
+    framebuffer.bind([meshTexture]);
+
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    meshToTextureProgram.bind();
+    uniformSquaredSize.set(squaredSize);
+
+    for(let accessorID = 0; accessorID < nAccessors; ++accessorID) 
+    {
+        uniformAccessorID.set(accessorID);
+        mesh.render(gl.POINTS);
+    }
+
+    framebuffer.unbind();
+    meshTexture.bind(0);
+    
+    if(meshTextureData == null) meshTextureData = new glTextureData32F(ctx);
+    
+    meshToTextureDataProgram.dispatch(meshTextureData, mesh.size(), 1024);
+    meshTextureData.__descriptor.capacity = mesh.size();
+   
+    ctx.bindFramebuffer(activeFramebuffer);
+    ctx.setViewport(currentViewport.x, currentViewport.y, currentViewport.w, currentViewport.h);
+    ctx.bindProgram(activeProgram);
+
+    return meshTextureData;
+}
+
 glTextureData.prototype.set = function(textureData)
 {
-    this.__invalidated = true;
-    this.reserve(textureData.__descriptor.localSize, textureData.__descriptor.capacity);
+    if(!textureData.__is_glPrimitive)
+    {
+        this.__invalidated = true;
+        this.reserve(textureData.__descriptor.localSize, textureData.__descriptor.capacity);
 
-    this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
-    this.__descriptor.size = textureData.size();
-    
-    let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
-    this.__framebuffer.bind(this.__framebufferAttachment);
-      
-    textureData.blit(this.__ctx.getGL().NEAREST);
-    
-    this.__ctx.bindFramebuffer(lastActiveFramebuffer);
-    this.__invalidated = false;
+        this.__descriptor.workGroupSize = textureData.__descriptor.workGroupSize;
+        this.__descriptor.capacity = textureData.capacity();
+        this.__descriptor.size = textureData.size();
+        
+        let lastActiveFramebuffer = this.__ctx.getActiveFramebuffer();
+        this.__framebuffer.bind(this.__framebufferAttachment);
+        
+        textureData.blit(this.__ctx.getGL().NEAREST);
+        
+        this.__ctx.bindFramebuffer(lastActiveFramebuffer);
+        this.__invalidated = false;
+
+    } else glTextureData.fromMesh(this.__ctx, textureData, this);
 }
 
 glTextureData.prototype.size = function() {

@@ -378,9 +378,9 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "{                                                                                                                                                                                                               \n" +
                                      "    vec2 texCoords = texCoords * 4.0;                                                                                                                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    integration         = ((iterationID > 0) ? texelFetch(integralBuffer,    ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
-                                     "    resolvedRadiance    = ((iterationID > 0) ? texelFetch(radianceBuffer,    ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
-                                     "    progressiveRadiance = ((iterationID > 0) ? texelFetch(progressiveBuffer, ivec2(gl_FragCoord), 0) : vec4(0.0));                                                                                              \n" +
+                                     "    integration         = texelFetch(integralBuffer,    ivec2(gl_FragCoord), 0);                                                                                                                                \n" +
+                                     "    resolvedRadiance    = texelFetch(radianceBuffer,    ivec2(gl_FragCoord), 0);                                                                                                                                \n" +
+                                     "    progressiveRadiance = texelFetch(progressiveBuffer, ivec2(gl_FragCoord), 0);                                                                                                                                \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    float mapID = (floor(gl_FragCoord.x / 128.0) + 4.0 * floor(gl_FragCoord.y / 128.0));                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
@@ -402,6 +402,8 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "    {                                                                                                                                                                                                           \n" +
                                      "        uint sampleID = uint(iterationID) * nSamplesPerFrame + i;                                                                                                                                               \n" +
                                      "                                                                                                                                                                                                                \n" +
+                                     "        if(nSamples == 1u || sampleID % nSamples == 0u) integration = vec4(0.0);                                                                                                                                \n" +
+                                     "                                                                                                                                                                                                                \n" +
                                      "        if(gl_FragCoord.x >= 2.0 || gl_FragCoord.y >= 1.0)                                                                                                                                                      \n" +
                                      "        {                                                                                                                                                                                                       \n" +
                                      "            vec2 Xi = Hammersley(sampleID % nSamples, nSamples);                                                                                                                                                \n" +
@@ -416,12 +418,10 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                integration += radianceSample * weight;                                                                                                                                                         \n" +                      
                                      "            }                                                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "            if(nSamples == 1u || sampleID > 0u && sampleID % nSamples == (nSamples - 1u))                                                                                                                                         \n" +
+                                     "            if(nSamples == 1u || sampleID % nSamples == (nSamples - 1u))                                                                                                                                        \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                integration /= texelFetch(integralPDF, ivec2(gl_FragCoord), 0);                                                                                                                                 \n" +
                                      "                resolvedRadiance = vec4(linearSpaceToGamma(integration.rgb), integration.a);                                                                                                                    \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "                integration = vec4(0.0);                                                                                                                                                                        \n" +
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "        else                                                                                                                                                                                                    \n" +
@@ -434,17 +434,15 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            integration.xyz += ((gl_FragCoord.x < 1.0) ? vec3((vec2(uv) + 0.5) / vec2(sky_mip32_size), 0.0) : radianceSample) * weight;                                                                         \n" +
                                      "            integration.w += weight;                                                                                                                                                                            \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "            if(nSamples == 1u || sampleID > 0u && sampleID % nSamples == (nSamples - 1u))                                                                                                                                         \n" +
+                                     "            if(nSamples == 1u || sampleID % nSamples == (nSamples - 1u))                                                                                                                                        \n" +
                                      "            {                                                                                                                                                                                                   \n" +
-                                     "                resolvedRadiance = vec4(((integration.w > 0.0) ? (integration.xyz / integration.w) : vec3(0.0)) , 1.0);                                                                                         \n" +
+                                     "                resolvedRadiance = vec4(((integration.w > 0.0) ? (integration.xyz / integration.w) : vec3(0.0)), 1.0);                                                                                          \n" +
                                      "                if(gl_FragCoord.x < 1.0) resolvedRadiance.xyz = -uvToPolar(resolvedRadiance.xy);                                                                                                                \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "                integration = vec4(0.0);                                                                                                                                                                        \n" +
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "    }                                                                                                                                                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    progressiveRadiance += (resolvedRadiance - progressiveRadiance) * sqrt(float(nSamplesPerFrame) / float(nSamples));                                                                                          \n" +
+                                     "    progressiveRadiance += (resolvedRadiance - progressiveRadiance) * (float(nSamplesPerFrame) / float(nSamples));                                                                                              \n" +
                                      "}                                                                                                                                                                                                               \n");
                         
         program.compile();
@@ -549,8 +547,11 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
         let activeFramebuffer = this.__ctx.getActiveFramebuffer();
 
         if(nSamples == null) nSamples = 1024;
+        nSamples = Math.min(nSamples, 1024);
+    
         this.__radianceSamplesPerFrameUniform.set(nSamples);
-
+        if(nSamples >= 1024) this.__radianceIntegralIterationID = 0;
+        
         if(this.__onDrawCallback != null)
         {
             this.__skyMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
