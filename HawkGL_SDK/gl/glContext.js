@@ -679,10 +679,10 @@ glContext.prototype.loadObjFileFromMemory = function(fileData, onLoad)
             vertex.normal.y = normalBuffer[normalIndexBuffer[i] * 3 + 1];
             vertex.normal.z = normalBuffer[normalIndexBuffer[i] * 3 + 2];
 
-            vertex.texCoord.x = uvBuffer[uvIndexBuffer[i] * 2 + 0];
+            vertex.texCoord.x =       uvBuffer[uvIndexBuffer[i] * 2 + 0];
             vertex.texCoord.y = 1.0 - uvBuffer[uvIndexBuffer[i] * 2 + 1];
         }
-        
+
         let groups = new Map();
         
         Object.keys(modelData.groups).forEach(key =>
@@ -695,6 +695,8 @@ glContext.prototype.loadObjFileFromMemory = function(fileData, onLoad)
 
             groups.set(groupName, groupVertices.concat(vertices.slice(groupIndices.from, groupIndices.to)));
         });
+
+        if(groups.size == 0) groups.set("", vertices);
 
         finish(groups);
     });
