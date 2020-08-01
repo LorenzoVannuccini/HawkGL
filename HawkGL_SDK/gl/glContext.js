@@ -104,12 +104,7 @@ let glContext = function(canvasID)
     if(!this.__standardUniformsBlock.empty())  this.__appendShadingHeader(this.__standardUniformsBlock.getShaderSource());
     if(!this.__animationUniformsBlock.empty()) this.__appendShadingHeader(this.__animationUniformsBlock.getShaderSource());
 
-    this.__appendShadingHeader("#define normalize _safe_normalize                                                                                                            \n" +  
-                               "#define _SAFE_NORMALIZE_TEMPLATE(type) type _safe_normalize(type v) { mediump float l = dot(v, v); return ((l > 0.0) ? (v / sqrt(l)) : v); } \n" +  
-                               "                                                                                                                                             \n" +  
-                               "_SAFE_NORMALIZE_TEMPLATE(mediump vec2)                                                                                                       \n" +  
-                               "_SAFE_NORMALIZE_TEMPLATE(mediump vec3)                                                                                                       \n" +  
-                               "_SAFE_NORMALIZE_TEMPLATE(mediump vec4)                                                                                                       \n" +  
+    this.__appendShadingHeader("#define normalize(v) ((dot(v, v) > 0.0) ? normalize(v) : v) // Prevents singularities. Inefficient, but can be used as const express.        \n" +  
                                "                                                                                                                                             \n" +  
                                "#ifdef GLES_VERTEX_SHADER                                                                                                                    \n" +
                                "                                                                                                                                             \n" +
