@@ -73,6 +73,64 @@ glMesh.prototype.__updateVolume = function()
     this.__shouldUpdateVolume = false;
 }
 
+glMesh.prototype.__buildVertexBuffers = function()
+{
+    for(let i = 0, e = this.size(); i != e; i += 3) this.__vertices[i].tangent.set(0.0);
+
+    let vertexBuffers = glPrimitive.prototype.__buildVertexBuffers.call(this);
+
+    // recompute tangents
+    for(let i = 0, e = vertexBuffers.ibo.length; i != e; i += 3)
+    {
+        let a = vertexBuffers.vbo[vertexBuffers.ibo[i + 0]];
+        let b = vertexBuffers.vbo[vertexBuffers.ibo[i + 1]];
+        let c = vertexBuffers.vbo[vertexBuffers.ibo[i + 2]];
+ 
+        let edge1 = glVector3f.sub(b.position, a.position);
+        let edge2 = glVector3f.sub(c.position, a.position);
+//      let edge3 = glVector3f.sub(b.position, c.position);
+        
+        let deltaUV1 = glVector2f.sub(b.texCoord, a.texCoord);
+        let deltaUV2 = glVector2f.sub(c.texCoord, a.texCoord);  
+
+        let surfaceNormal = glVector3f.cross(edge1, edge2);
+
+/*
+        let weightA = 1.0 - Math.abs(glVector3f.dot(edge1, edge2));
+        let weightB = 1.0 - Math.abs(glVector3f.dot(edge1, edge3));
+        let weightC = 1.0 - Math.abs(glVector3f.dot(edge2, edge3));
+*/
+        let d = (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+        let f = ((d != 0.0) ? (1.0 / d) : 0.0);
+
+        let tangent = new glVector3f((deltaUV2.y * edge1.x - deltaUV1.y * edge2.x) * f,
+                                     (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y) * f,
+                                     (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z) * f);
+
+        if(glVector3f.dot(tangent, tangent) <= 0.0)
+        {
+            let bitangent = new glVector3f(1.0, 0.0, 0.0);
+            
+            if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4)
+            {
+                bitangent = new glVector3f(0.0, 1.0, 0.0);
+                
+                if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4) bitangent = new glVector3f(0.0, 0.0, 1.0);
+            }
+            
+            tangent = glVector3f.cross(surfaceNormal, bitangent);
+        }
+        
+        tangent = new glVector4f(tangent.x, tangent.y, tangent.z, ((d < 0.0) ? -1.0 : 1.0));
+         
+        a.tangent.add(tangent);
+        b.tangent.add(tangent);
+        c.tangent.add(tangent);
+    }
+
+    return vertexBuffers;
+}
+
 glMesh.prototype.render = function() {
     glPrimitive.prototype.render.call(this, this.__ctx.getGL().TRIANGLES);    
 }

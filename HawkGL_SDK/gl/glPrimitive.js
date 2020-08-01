@@ -50,6 +50,7 @@ glPrimitive.prototype.__bindStandardAttributes = function()
     gl.vertexAttribPointer(glContext.__positionAttribLocation,           3, gl.FLOAT,         false, vertexBytes, offset); offset += 3 * floatBytes;
     gl.vertexAttribPointer(glContext.__texCoordAttribLocation,           2, gl.FLOAT,         false, vertexBytes, offset); offset += 2 * floatBytes;
     gl.vertexAttribPointer(glContext.__normalAttribLocation,             3, gl.FLOAT,         false, vertexBytes, offset); offset += 3 * floatBytes;
+    gl.vertexAttribPointer(glContext.__tangentAttribLocation,            4, gl.FLOAT,         false, vertexBytes, offset); offset += 4 * floatBytes;
     gl.vertexAttribPointer(glContext.__bonesWeightsAttribLocation,       4, gl.UNSIGNED_BYTE, true,  vertexBytes, offset); offset += 4;
     gl.vertexAttribIPointer(glContext.__bonesIndicesAttribLocation,      4, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 4;
     gl.vertexAttribIPointer(glContext.__animationMatrixIDAttribLocation, 1, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 1;
@@ -57,6 +58,7 @@ glPrimitive.prototype.__bindStandardAttributes = function()
     gl.enableVertexAttribArray(glContext.__positionAttribLocation);
     gl.enableVertexAttribArray(glContext.__texCoordAttribLocation);
     gl.enableVertexAttribArray(glContext.__normalAttribLocation);
+    gl.enableVertexAttribArray(glContext.__tangentAttribLocation);
     gl.enableVertexAttribArray(glContext.__bonesIndicesAttribLocation);
     gl.enableVertexAttribArray(glContext.__bonesWeightsAttribLocation);
     gl.enableVertexAttribArray(glContext.__animationMatrixIDAttribLocation);
@@ -100,9 +102,9 @@ glPrimitive.__appendArrayBuffers = function(buffer1, buffer2)
     return tmp.buffer;
 };
 
-glPrimitive.prototype.__buildVertexData = function()
+glPrimitive.prototype.__buildVertexBuffers = function()
 {
-    let vertexData =
+    let vertexBuffers =
     {
         vbo: [],
         ibo: []
@@ -118,12 +120,19 @@ glPrimitive.prototype.__buildVertexData = function()
         let vertexIndex = vertexMap.get(vertexHash);
         if(vertexIndex == null)
         {
-            vertexData.vbo.push(vertex);
+            vertexBuffers.vbo.push(vertex);
             vertexMap.set(vertexHash, (vertexIndex = vertexMap.size));
         }
         
-        vertexData.ibo.push(vertexIndex);
+        vertexBuffers.ibo.push(vertexIndex);
     }
+
+    return vertexBuffers;
+}
+
+glPrimitive.prototype.__buildVertexData = function()
+{
+    let vertexData = this.__buildVertexBuffers();
     
     let vertices  = vertexData.vbo;
     let nVertices = vertices.length;

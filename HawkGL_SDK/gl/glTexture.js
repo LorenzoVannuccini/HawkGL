@@ -445,13 +445,14 @@ glTextureData.__genMeshToTextureProgram = function(ctx)
                                      "                                                                                                             \n" +
                                      "void main()                                                                                                  \n" +
                                      "{                                                                                                            \n" +
-                                     "    const int nAccessors = 2;                                                                                \n" +
+                                     "    const int nAccessors = 3;                                                                                \n" +
                                      "    int invocationID = gl_VertexID * nAccessors + accessorID;                                                \n" +
                                      "                                                                                                             \n" +
                                      "    switch(accessorID)                                                                                       \n" +
                                      "    {                                                                                                        \n" +
-                                     "        case 0: accessorData = vec4(glVertex, glTexCoord.x);  break;                                         \n" +
-                                     "        case 1: accessorData = vec4(glNormal, glTexCoord.y);  break;                                         \n" +
+                                     "        case 0: accessorData = vec4(glVertex,  glTexCoord.x); break;                                         \n" +
+                                     "        case 1: accessorData = vec4(glNormal,  glTexCoord.y); break;                                         \n" +
+                                     "        case 2: accessorData = vec4(_glTangent);              break;                                         \n" +
                                      "    }                                                                                                        \n" +
                                      "                                                                                                             \n" +
                                      "    gl_Position = vec4(invocationID % int(squaredSize), floor(float(invocationID) / squaredSize), 0.0, 1.0); \n" +
@@ -493,20 +494,22 @@ glTextureData.__genMeshToTextureDataProgram = function(ctx)
                                             "                                                                                                           \n" +
                                             "uniform sampler2D geoTexture;                                                                              \n" +
                                             "                                                                                                           \n" +
-                                            "local_size(2)                                                                                              \n" +
+                                            "local_size(3)                                                                                              \n" +
                                             "                                                                                                           \n" +
                                             "void main()                                                                                                \n" +
                                             "{                                                                                                          \n" +
-                                            "   const int nAccessors = 2;                                                                               \n" +
+                                            "   const int nAccessors = 3;                                                                               \n" +
                                             "                                                                                                           \n" +
                                             "   ivec2 tSize = textureSize(geoTexture, 0);                                                               \n" +
                                             "   int invocationID = (glGlobalInvocationID * nAccessors);                                                 \n" +
                                             "                                                                                                           \n" +
                                             "   ivec2 accessor0 = ivec2((invocationID + 0) % tSize.x, floor(float(invocationID + 0) / float(tSize.x))); \n" +
                                             "   ivec2 accessor1 = ivec2((invocationID + 1) % tSize.x, floor(float(invocationID + 1) / float(tSize.x))); \n" +
+                                            "   ivec2 accessor2 = ivec2((invocationID + 2) % tSize.x, floor(float(invocationID + 2) / float(tSize.x))); \n" +
                                             "                                                                                                           \n" +
                                             "   glData[0] = texelFetch(geoTexture, accessor0, 0);                                                       \n" +                      
                                             "   glData[1] = texelFetch(geoTexture, accessor1, 0);                                                       \n" +
+                                            "   glData[2] = texelFetch(geoTexture, accessor2, 0);                                                       \n" +
                                             "}                                                                                                          \n");
                     
         if(!program.compile()) console.error(program.getLastError());
@@ -618,7 +621,7 @@ glTextureData.fromMesh = function(ctx, mesh, meshTextureData)
         mesh.__vertices[vertexIndex].bonesIndices[0] = vertexIndex; // enforce vertices duplication
     }
     
-    let nAccessors = 2;
+    let nAccessors = 3;
     let squaredSize = nextPot(Math.ceil(Math.sqrt(mesh.size() * nAccessors)));
 
     let framebuffer = new glFramebuffer(ctx, squaredSize, squaredSize);

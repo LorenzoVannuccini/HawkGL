@@ -582,10 +582,16 @@ glComputeProgram.prototype.compile = function()
                     "    gl_Position.xy += vec2(gl_PointSize + 0.5) / vec2(_bufferSize);                                                                                                           \n" +
                     "}                                                                                                                                                                             \n" +
                     "                                                                                                                                                                              \n" +
+                    "#undef glTangent                                                                                                                                                              \n" +
+                    "#undef glBitangent                                                                                                                                                            \n" +
                     "#undef glAnimatedVertex                                                                                                                                                       \n" +
                     "#undef glAnimatedNormal                                                                                                                                                       \n" +
+                    "#undef glAnimatedTangent                                                                                                                                                      \n" +
+                    "#undef glAnimatedBitangent                                                                                                                                                    \n" +
                     "#undef glLastFrameAnimatedVertex                                                                                                                                              \n" +
                     "#undef glLastFrameAnimatedNormal                                                                                                                                              \n" +
+                    "#undef glLastFrameAnimatedTangent                                                                                                                                              \n" +
+                    "#undef glLastFrameAnimatedBitangent                                                                                                                                              \n" +
                     "                                                                                                                                                                              \n" +
                     "#define gl_Position  reserved_keyword                                                                                                                                         \n" +
                     "#define gl_PointSize reserved_keyword                                                                                                                                         \n" +
@@ -651,7 +657,7 @@ glComputeProgram.prototype.__getHeader = function() {
 }
 
 glComputeProgram.prototype.__getHeaderLines = function() {
-    return this.__ctx.__shadingGlobalConstantsLineCount + 91;
+    return this.__ctx.__shadingGlobalConstantsLineCount + 92;
 }
 
 glComputeProgram.prototype.setSource = function(computeShaderSource) {
