@@ -657,7 +657,7 @@ glComputeProgram.prototype.__getHeader = function() {
 }
 
 glComputeProgram.prototype.__getHeaderLines = function() {
-    return this.__ctx.__shadingGlobalConstantsLineCount + 92;
+    return this.__ctx.__shadingGlobalConstantsLineCount + 97;
 }
 
 glComputeProgram.prototype.setSource = function(computeShaderSource) {
