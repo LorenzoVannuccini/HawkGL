@@ -75,57 +75,138 @@ glMesh.prototype.__updateVolume = function()
 
 glMesh.prototype.__buildVertexBuffers = function()
 {
-    for(let i = 0, e = this.size(); i != e; i += 3) this.__vertices[i].tangent.set(0.0);
-
     let vertexBuffers = glPrimitive.prototype.__buildVertexBuffers.call(this);
 
-    // recompute tangents
-    for(let i = 0, e = vertexBuffers.ibo.length; i != e; i += 3)
+    let shouldRecomputeBasis = false;
+    for(let i = 0, e = vertexBuffers.vbo.length; (i != e && !shouldRecomputeBasis); ++i)
     {
-        let a = vertexBuffers.vbo[vertexBuffers.ibo[i + 0]];
-        let b = vertexBuffers.vbo[vertexBuffers.ibo[i + 1]];
-        let c = vertexBuffers.vbo[vertexBuffers.ibo[i + 2]];
- 
-        let edge1 = glVector3f.sub(b.position, a.position);
-        let edge2 = glVector3f.sub(c.position, a.position);
-//      let edge3 = glVector3f.sub(b.position, c.position);
-        
-        let deltaUV1 = glVector2f.sub(b.texCoord, a.texCoord);
-        let deltaUV2 = glVector2f.sub(c.texCoord, a.texCoord);  
+        let vertex = vertexBuffers.vbo[i];
 
-        let surfaceNormal = glVector3f.cross(edge1, edge2);
+        if(glVector3f.dot(vertex.normal,  vertex.normal)  <= 0.0) shouldRecomputeBasis = true;
+        if(glVector3f.dot(vertex.tangent, vertex.tangent) <= 0.0) shouldRecomputeBasis = true;
+    }
 
-/*
-        let weightA = 1.0 - Math.abs(glVector3f.dot(edge1, edge2));
-        let weightB = 1.0 - Math.abs(glVector3f.dot(edge1, edge3));
-        let weightC = 1.0 - Math.abs(glVector3f.dot(edge2, edge3));
-*/
-        let d = (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
-        let f = ((d != 0.0) ? (1.0 / d) : 0.0);
+    if(shouldRecomputeBasis)
+    {
+        let sharedNormals  = new Map();
+        let sharedTangents = new Map();
 
-        let tangent = new glVector3f((deltaUV2.y * edge1.x - deltaUV1.y * edge2.x) * f,
-                                     (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y) * f,
-                                     (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z) * f);
-
-        if(glVector3f.dot(tangent, tangent) <= 0.0)
+        function hashVertexForNormals(v)
         {
-            let bitangent = new glVector3f(1.0, 0.0, 0.0);
+            return v.position.x.toPrecision(4) + ":" +
+                   v.position.y.toPrecision(4) + ":" +
+                   v.position.z.toPrecision(4) + ":" +
             
-            if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4)
+                   v.normal.x.toPrecision(4) + ":" +
+                   v.normal.y.toPrecision(4) + ":" +
+                   v.normal.z.toPrecision(4);
+        }
+
+        function hashVertexForTangents(v)
+        {
+            return v.position.x.toPrecision(4) + ":" +
+                   v.position.y.toPrecision(4) + ":" +
+                   v.position.z.toPrecision(4) + ":" +
+            
+                   v.normal.x.toPrecision(4) + ":" +
+                   v.normal.y.toPrecision(4) + ":" +
+                   v.normal.z.toPrecision(4) + ":" +
+
+                   v.texCoord.x.toPrecision(4) + ":" +
+                   v.texCoord.y.toPrecision(4);
+        }
+
+        function mapSharedNormalTangent(vertex, normal, tangent, weight)
+        { 
+            let tangentHash = hashVertexForTangents(vertex);
+            let normalHash  = hashVertexForNormals(vertex);
+            
+            let sharedTangent = sharedTangents.get(tangentHash);
+            if(sharedTangent == null) sharedTangents.set(tangentHash, (sharedTangent = new glVector4f(0.0)));
+            
+            let sharedNormal = sharedNormals.get(normalHash);
+            if(sharedNormal == null) sharedNormals.set(normalHash, (sharedNormal = new glVector3f(0.0)));
+
+            sharedTangent.add(glVector4f.mul(tangent, weight));
+            sharedNormal.add(glVector3f.mul(normal, weight));
+        }
+
+        function readSharedNormal(vertex) {
+            return glVector3f.normalize(sharedNormals.get(hashVertexForNormals(vertex)));
+        }
+
+        function readSharedTangent(vertex)
+        {
+            let tangentData = sharedTangents.get(hashVertexForTangents(vertex));
+
+            let tangent = glVector3f.normalize(tangentData.x, tangentData.y, tangentData.z);
+            let sign = ((tangentData.w < 0.0) ? -1.0 : 1.0);
+
+            return new glVector4f(tangent.x, tangent.y, tangent.z, sign);
+        }
+
+        // recompute normals / tangents
+        for(let i = 0, e = vertexBuffers.ibo.length; i != e; i += 3)
+        {
+            let a = vertexBuffers.vbo[vertexBuffers.ibo[i + 0]];
+            let b = vertexBuffers.vbo[vertexBuffers.ibo[i + 1]];
+            let c = vertexBuffers.vbo[vertexBuffers.ibo[i + 2]];
+    
+            let edge1 = glVector3f.sub(b.position, a.position);
+            let edge2 = glVector3f.sub(c.position, a.position);
+            let edge3 = glVector3f.sub(b.position, c.position);
+            
+            let deltaUV1 = glVector2f.sub(b.texCoord, a.texCoord);
+            let deltaUV2 = glVector2f.sub(c.texCoord, a.texCoord);  
+
+            let d = (deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y);
+            let f = ((d != 0.0) ? (1.0 / d) : 0.0);
+
+            let tangent = new glVector3f((deltaUV2.y * edge1.x - deltaUV1.y * edge2.x) * f,
+                                        (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y) * f,
+                                        (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z) * f);
+
+            edge1.normalize();
+            edge2.normalize();
+            edge3.normalize();
+            
+            let weightA = 1.0 - Math.abs(glVector3f.dot(edge1, edge2));
+            let weightB = 1.0 - Math.abs(glVector3f.dot(edge1, edge3));
+            let weightC = 1.0 - Math.abs(glVector3f.dot(edge2, edge3));
+            
+            let surfaceNormal = glVector3f.normalize(glVector3f.cross(edge3, edge2));
+
+            if(glVector3f.dot(tangent, tangent) <= 0.0)
             {
-                bitangent = new glVector3f(0.0, 1.0, 0.0);
+                let bitangent = new glVector3f(1.0, 0.0, 0.0);
                 
-                if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4) bitangent = new glVector3f(0.0, 0.0, 1.0);
+                if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4)
+                {
+                    bitangent = new glVector3f(0.0, 1.0, 0.0);
+                    
+                    if(glVector3f.cross(surfaceNormal, bitangent).squaredLength() < 1e-4) bitangent = new glVector3f(0.0, 0.0, 1.0);
+                }
+                
+                tangent = glVector3f.cross(surfaceNormal, bitangent);
             }
             
-            tangent = glVector3f.cross(surfaceNormal, bitangent);
+            tangent = new glVector4f(tangent.x, tangent.y, tangent.z, ((d < 0.0) ? -1.0 : 1.0));
+            
+            mapSharedNormalTangent(a, surfaceNormal, tangent, weightA);
+            mapSharedNormalTangent(b, surfaceNormal, tangent, weightB);
+            mapSharedNormalTangent(c, surfaceNormal, tangent, weightC);
         }
-        
-        tangent = new glVector4f(tangent.x, tangent.y, tangent.z, ((d < 0.0) ? -1.0 : 1.0));
-         
-        a.tangent.add(tangent);
-        b.tangent.add(tangent);
-        c.tangent.add(tangent);
+
+        for(let i = 0, e = vertexBuffers.vbo.length; i != e; ++i)
+        {
+            let vertex = vertexBuffers.vbo[i];
+
+            let shouldRecomputeNormal  = (glVector3f.dot(vertex.normal,   vertex.normal)  <= 0.0);
+            let shouldRecomputeTangent = (glVector3f.dot(vertex.tangent,  vertex.tangent) <= 0.0);
+            
+            if(shouldRecomputeTangent) vertex.tangent = readSharedTangent(vertex);
+            if(shouldRecomputeNormal)  vertex.normal  = readSharedNormal(vertex);
+        }
     }
 
     return vertexBuffers;

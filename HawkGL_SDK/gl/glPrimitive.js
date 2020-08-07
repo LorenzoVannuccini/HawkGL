@@ -191,8 +191,19 @@ glPrimitive.prototype.transform = function(matrix)
 
         for(let i = 0; i != nVertices; ++i)
         {
-            this.__vertices[i].position = matrix.mul(this.__vertices[i].position);
-            this.__vertices[i].normal = glVector3f.normalize(normalMatrix.mul(this.__vertices[i].normal));
+            let vertex = this.__vertices[i];
+
+            vertex.position = matrix.mul(vertex.position);
+
+            let hasNormal = (glVector3f.dot(vertex.normal, vertex.normal) > 0.0);
+            if(hasNormal) vertex.normal = glVector3f.normalize(normalMatrix.mul(vertex.normal));
+
+            let hasTangent = (glVector3f.dot(vertex.tangent, vertex.tangent) > 0.0);
+            if(hasTangent)
+            {
+                let tangent = glVector3f.normalize(normalMatrix.mul(new glVector3f(vertex.tangent.x, vertex.tangent.y, vertex.tangent.z)));
+                vertex.tangent.set(tangent.x, tangent.y, tangent.z, vertex.tangent.w);
+            }
         }   
     }
 
