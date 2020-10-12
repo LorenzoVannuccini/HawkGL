@@ -52,3 +52,7 @@ function closestPot(x)
 	
 	return (((np2 - x) < (x - lp2)) ? np2 : lp2);
 }
+
+function fitPot(x) {
+	return ((x && !(x & (x - 1))) ? x : nextPot(x));
+}
