@@ -1226,7 +1226,7 @@ glTFLoader.prototype._postprocess = function ()
             let weights0Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_0);
             let weights1Buffer  = MinimalGLTFLoader.__getAccessorData(primitive.attributes.WEIGHTS_1);
             
-            if(joints1Buffer != null || weights1Buffer != null) console.warning("glTFLoader Skinning Warning: maximum supported bones per vertex is 4");
+            if(joints1Buffer != null || weights1Buffer != null) console.warn("glTFLoader Skinning Warning: maximum supported bones per vertex is 4");
 
             let indices = MinimalGLTFLoader.__getAccessorData(this.glTF.accessors[primitive.indices]);
  
