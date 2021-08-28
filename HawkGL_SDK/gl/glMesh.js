@@ -283,3 +283,26 @@ glMesh.createSphere = function(ctx, radius, nSlices, nStacks)
     
     return sphere;
 }
+
+glMesh.prototype.toOBJ = function()
+{
+    let vertexBuffers = this.__buildVertexBuffers();
+    let vertices = vertexBuffers.vbo;
+    let indices = vertexBuffers.ibo;
+    let nVertices = vertices.length;
+    let nIndices = indices.length;
+
+    let objFileData = "";
+    for(let i = 0; i != nVertices; ++i)   objFileData += "v "  + vertices[i].position.x + " " + vertices[i].position.y + " " + vertices[i].position.z + "\r\n";
+    for(let i = 0; i != nVertices; ++i)   objFileData += "vt " + vertices[i].texCoord.x + " " + vertices[i].texCoord.y + "\r\n";
+    for(let i = 0; i != nVertices; ++i)   objFileData += "vn " + vertices[i].normal.x   + " " + vertices[i].normal.y   + " " + vertices[i].normal.z + "\r\n";
+    for(let i = 0; i != nIndices; i += 3)
+    {
+        objFileData += "f ";
+        objFileData += (indices[i + 0] + 1) + "/" + (indices[i + 0] + 1) + "/" + (indices[i + 0] + 1) + " ";
+        objFileData += (indices[i + 1] + 1) + "/" + (indices[i + 1] + 1) + "/" + (indices[i + 1] + 1) + " ";
+        objFileData += (indices[i + 2] + 1) + "/" + (indices[i + 2] + 1) + "/" + (indices[i + 2] + 1) + "\r\n";
+    } 
+
+    return objFileData;
+}

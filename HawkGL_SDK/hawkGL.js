@@ -64,6 +64,7 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("pot.js");
     includeScriptSDK("task.js");
     includeScriptSDK("dispatch.js");
+    includeScriptSDK("hdrpng.min.js");
     includeScriptSDK("fpsCounter.js");
     includeScriptSDK("fileManager.js");
     includeScriptSDK("stateMachine.js");
@@ -92,5 +93,6 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("gl/glTexture.js");
     includeScriptSDK("gl/glFramebuffer.js");
     includeScriptSDK("gl/glEnvironmentMap.js");
+    includeScriptSDK("gl/glTriangleSelector.js");
 
 })();

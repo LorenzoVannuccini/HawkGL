@@ -36,10 +36,14 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     
     this.__radianceIntegralPDF = glEnvironmentMap.__genRadianceIntegralPDF_LUT(ctx);
     this.__radianceSolverProgram = glEnvironmentMap.__genRadianceSolverProgram(ctx);
+    this.__radianceDirectLightColUniform = this.__radianceSolverProgram.getUniform("lightColor");
+    this.__radianceDirectLightVecUniform = this.__radianceSolverProgram.getUniform("lightVector");
     this.__radianceSamplesPerFrameUniform = this.__radianceSolverProgram.getUniform("samplesPerFrame");
     this.__radianceIterationCountUniform = this.__radianceSolverProgram.getUniform("iterationID");
+    this.__directionalLightVector = new glVector3f(0);
+    this.__directionalLightColor  = new glVector3f(0);
     this.__pendingRadianceIntegrationSteps = 1024;
-
+    
     this.__faceFramebuffer = new glFramebuffer(ctx, halfSize, halfSize);
     this.__faceMap = this.__faceFramebuffer.createColorAttachmentRGBA16F();
     this.__faceFramebuffer.createDepthAttachment16();
@@ -82,7 +86,15 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     
     this.__onDrawCallback = onDrawCallback;
 
-    this.__skyMap = skyMap;
+    this.__gammaSpaceToLinearBlitProgram = glEnvironmentMap.__genGammaSpaceToLinearBlitProgram(ctx);
+    this.__skyMapGammaToLinearFramebuffer = new glFramebuffer(ctx, skyMap.getWidth(), skyMap.getHeight());
+    this.__skyMap = this.__skyMapGammaToLinearFramebuffer.createColorAttachmentRGBA16F();
+    
+    skyMap.bind(0);
+    this.__skyMapGammaToLinearFramebuffer.bind([this.__skyMap]);
+    this.__gammaSpaceToLinearBlitProgram.runPostProcess();
+    this.__skyMapGammaToLinearFramebuffer.unbind();
+    
     this.__faceID = 0;
 }  
 
@@ -295,8 +307,10 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "uniform mediump sampler2D integralPDF;                                                                                                                                                                          \n" +
                                      "uniform mediump sampler2D skyMap;                                                                                                                                                                               \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "uniform int samplesPerFrame;                                                                                                                                                                                    \n" +
-                                     "uniform int iterationID;                                                                                                                                                                                        \n" +
+                                     "uniform vec3 lightColor;                                                                                                                                                                                        \n" +
+                                     "uniform vec3 lightVector;                                                                                                                                                                                       \n" +
+                                     "uniform int  samplesPerFrame;                                                                                                                                                                                   \n" +
+                                     "uniform int  iterationID;                                                                                                                                                                                       \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "in vec2 texCoords;                                                                                                                                                                                              \n" +
                                      "                                                                                                                                                                                                                \n" +
@@ -322,14 +336,6 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "vec4 textureSphereLod(in sampler2D sphereMap, in vec3 n, in float lod) {                                                                                                                                        \n" +
                                      "    return textureLod(sphereMap, polarToUV(n), lod);                                                                                                                                                            \n" +
-                                     "}                                                                                                                                                                                                               \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "vec3 gammaSpaceToLinear(in vec3 color) {                                                                                                                                                                        \n" +
-                                     "    return pow(color, vec3(2.24));	                                                                                                                                                                          \n" +
-                                     "}                                                                                                                                                                                                               \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "vec3 linearSpaceToGamma(in vec3 color) {                                                                                                                                                                        \n" +
-                                     "    return pow(color, vec3(1.0 / 2.24));	                                                                                                                                                                      \n" +
                                      "}                                                                                                                                                                                                               \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "float colorToLuma(in vec3 color) {                                                                                                                                                                              \n" +
@@ -413,15 +419,13 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            if(weight > 0.0)                                                                                                                                                                                    \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                vec4 radianceSample = textureSphereLod(environmentMap, V, lod);                                                                                                                                 \n" +
-                                     "                radianceSample.rgb = gammaSpaceToLinear(radianceSample.rgb);                                                                                                                                    \n" +
-                                     "                                                                                                                                                                                                                \n" +
                                      "                integration += radianceSample * weight;                                                                                                                                                         \n" +                      
                                      "            }                                                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "            if(nSamples == 1u || sampleID % nSamples == (nSamples - 1u))                                                                                                                                        \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                integration /= texelFetch(integralPDF, ivec2(gl_FragCoord), 0);                                                                                                                                 \n" +
-                                     "                resolvedRadiance = vec4(linearSpaceToGamma(integration.rgb), integration.a);                                                                                                                    \n" +
+                                     "                resolvedRadiance = integration;                                                                                                                                                                 \n" +
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "        else                                                                                                                                                                                                    \n" +
@@ -429,7 +433,7 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            ivec2 uv = ivec2(sampleID % sky_mip32_size.x, uint(floor(float(sampleID) / float(sky_mip32_size.x))) % sky_mip32_size.y);                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "            vec3 radianceSample = texelFetch(skyMap, uv, sky_mip32_lod).rgb;                                                                                                                                    \n" +
-                                     "            float weight = pow(colorToLuma(radianceSample), 100.0);                                                                                                                                             \n" +
+                                     "            float weight = min(pow(colorToLuma(radianceSample / 100.0), 10.0) * 100.0, 1000.0);                                                                                                                 \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "            integration.xyz += ((gl_FragCoord.x < 1.0) ? vec3((vec2(uv) + 0.5) / vec2(sky_mip32_size), 0.0) : radianceSample) * weight;                                                                         \n" +
                                      "            integration.w += weight;                                                                                                                                                                            \n" +
@@ -437,7 +441,9 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            if(nSamples == 1u || sampleID % nSamples == (nSamples - 1u))                                                                                                                                        \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                resolvedRadiance = vec4(((integration.w > 0.0) ? (integration.xyz / integration.w) : vec3(0.0)), 1.0);                                                                                          \n" +
-                                     "                if(gl_FragCoord.x < 1.0) resolvedRadiance.xyz = -uvToPolar(resolvedRadiance.xy);                                                                                                                \n" +
+                                     "                if(dot(lightColor, lightColor) > 0.0) resolvedRadiance.rgb = lightColor;                                                                                                                        \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "                if(gl_FragCoord.x < 1.0) resolvedRadiance.xyz = ((dot(lightVector, lightVector) > 0.0) ? normalize(lightVector) : -uvToPolar(resolvedRadiance.xy));                                             \n" +
                                      "            }                                                                                                                                                                                                   \n" +
                                      "        }                                                                                                                                                                                                       \n" +
                                      "    }                                                                                                                                                                                                           \n" +
@@ -453,10 +459,53 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
         program.createUniformSampler("integralBuffer",    3);
         program.createUniformSampler("radianceBuffer",    4);
         program.createUniformSampler("progressiveBuffer", 5);
+        program.createUniformVec3("lightColor",     0, 0, 0);
+        program.createUniformVec3("lightVector",    0, 0, 0);
         program.createUniformInt("samplesPerFrame",      16);
         program.createUniformInt("iterationID",           0);
         
         glEnvironmentMap.__radianceSolverProgramInstances.set(ctx, program);
+    }
+
+    return program;
+}
+
+glEnvironmentMap.__genGammaSpaceToLinearBlitProgram = function(ctx)
+{
+    if(glEnvironmentMap.__gammaSpaceToLinearBlitProgramInstances == null) glEnvironmentMap.__gammaSpaceToLinearBlitProgramInstances = new Map();
+
+    let program = glEnvironmentMap.__gammaSpaceToLinearBlitProgramInstances.get(ctx);
+    if(program == null) 
+    {
+        program = new glProgram(ctx, "#version 300 es                            \n" +
+                                     "precision highp float;                     \n" +
+                                     "                                           \n" +
+                                     "out vec2 texCoords;                        \n" +
+                                     "                                           \n" +
+                                     "void main()                                \n" +
+                                     "{                                          \n" +
+                                     "    texCoords = glTexCoord;                \n" +
+                                     "    gl_Position = vec4(glVertex.xyz, 1.0); \n" +
+                                     "}                                          \n",
+
+                                     "#version 300 es                                                                                                                                                                                                 \n" +
+                                     "precision mediump float;                                                                                                                                                                                        \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "uniform mediump sampler2D inputTexture;                                                                                                                                                                         \n" +
+                                     "in vec2 texCoords;                                                                                                                                                                                              \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "layout(location = 0) out mediump vec4 fragColor;                                                                                                                                                                \n" +
+                                     "                                                                                                                                                                                                                \n" +
+                                     "void main()                                                                                                                                                                                                     \n" +
+                                     "{                                                                                                                                                                                                               \n" +
+                                     "    vec4 color = texelFetch(inputTexture, ivec2(gl_FragCoord.xy), 0);                                                                                                                                           \n" +
+                                     "    fragColor = vec4(pow(color.rgb, vec3(2.24)), color.a);                                                                                                                                                      \n" +
+                                     "}                                                                                                                                                                                                               \n");
+                        
+        program.compile();
+        program.createUniformSampler("inputTexture", 0);
+             
+        glEnvironmentMap.__gammaSpaceToLinearBlitProgramInstances.set(ctx, program);
     }
 
     return program;
@@ -514,7 +563,7 @@ glEnvironmentMap.prototype.update = function(position, nFacesUpdates)
     let activeFramebuffer = this.__ctx.getActiveFramebuffer();
     
     if(this.__onDrawCallback != null)
-    {
+    { 
         this.__ctx.pushMatrix();
         ctx.setPerspectiveProjection(90.0, 1.0, 0.1, 99.0);
     
@@ -546,6 +595,9 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
         let activeProgram     = this.__ctx.getActiveProgram();
         let activeFramebuffer = this.__ctx.getActiveFramebuffer();
 
+        this.__radianceDirectLightColUniform.set(this.__directionalLightColor);
+        this.__radianceDirectLightVecUniform.set(this.__directionalLightVector);
+ 
         if(nSamples == null) nSamples = 1024;
         nSamples = Math.min(nSamples, 1024);
     
@@ -597,6 +649,14 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
         this.__pendingRadianceIntegrationSteps = Math.max(this.__pendingRadianceIntegrationSteps - nSamples, 0);
         ++this.__radianceIntegralIterationID;
     }
+}
+
+glEnvironmentMap.prototype.setDirectionalLightVector = function(x, y, z) {
+    this.__directionalLightVector.set(x, y, z);
+}
+
+glEnvironmentMap.prototype.setDirectionalLightColor = function(r, g, b) {
+    this.__directionalLightColor.set(r, g, b);
 }
 
 glEnvironmentMap.prototype.setSkyIntensity = function(multiplier) {

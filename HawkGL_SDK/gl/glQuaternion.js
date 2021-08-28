@@ -179,15 +179,6 @@ glQuaternion.prototype.__updateMatrix = function()
     this.__matrixUpdated = true;
 }
 
-glQuaternion.prototype.toPitchYawRoll = function()
-{
-    let pitch = -Math.atan2(2.0*(this.__y * this.__z + this.__w * this.__x), this.__w * this.__w - this.__x * this.__x - this.__y * this.__y + this.__z * this.__z) * 180.0 / Math.PI;
-    let roll  = -Math.atan2(2.0*(this.__x * this.__y + this.__w * this.__z), this.__w * this.__w + this.__x * this.__x - this.__y * this.__y - this.__z * this.__z) * 180.0 / Math.PI;
-    let yaw   = -Math.asin(-2.0*(this.__x * this.__z - this.__w * this.__y)) * 180.0 / Math.PI;
-
-    return new glVector3f(pitch, yaw, roll);
-}
-
 glQuaternion.prototype.toVector3f = function() {
     return glVector3f.normalize(this.toInverseMatrix4x4f().mul(new glVector3f(0.0, 0.0, -1.0)));
 }

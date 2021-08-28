@@ -24,7 +24,7 @@
 let glContext = function(canvasID)
 {
     this.__canvas = ((typeof canvasID === 'string' || canvasID instanceof String) ? document.getElementById(canvasID) : canvasID);
-       
+        
     let options = 
     {
         alpha: true, 
@@ -49,6 +49,11 @@ let glContext = function(canvasID)
 
     this.enableHiDPI(false);
 
+    this.__pointerLocked = false;
+    this.__pointerLockEngaged = false;
+    this.__canvas.requestPointerLock = (this.__canvas.requestPointerLock || this.__canvas.mozRequestPointerLock || this.__canvas.webkitRequestPointerLock);
+    this.__hookPointerLockEvents();
+    
     this.__uniformRectMesh = glMesh.createRectangle(this, 2.0, 2.0);
     
     this.__projectionMatrix = glMatrix4x4f.identityMatrix();
@@ -93,10 +98,10 @@ let glContext = function(canvasID)
     this.__standardUniformsBlock.glIsAnimationActive         = this.__standardUniformsBlock.createUniformInt("glIsAnimationActive",             glUniformBlock.Precision.LOWP,    0);
     this.__standardUniformsBlock._glTextureDataDescriptors   = this.__standardUniformsBlock.createUniformArrayVec4("_glTextureDataDescriptors", glUniformBlock.Precision.MEDIUMP, maxTextureUnits, null);
     
-    this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glBonesMatricesCurrentFrame     = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.MEDIUMP, 256, null);
-    this.__animationUniformsBlock.glBonesMatricesLastFrame        = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.MEDIUMP, 256, null);
+    this.__animationUniformsBlock.glAnimationMatricesCurrentFrame = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesCurrentFrame", glUniformBlock.Precision.MEDIUMP, 255, null);
+    this.__animationUniformsBlock.glAnimationMatricesLastFrame    = this.__animationUniformsBlock.createUniformArrayMat4("glAnimationMatricesLastFrame",    glUniformBlock.Precision.MEDIUMP, 255, null);
+    this.__animationUniformsBlock.glBonesMatricesCurrentFrame     = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesCurrentFrame",     glUniformBlock.Precision.MEDIUMP, 255, null);
+    this.__animationUniformsBlock.glBonesMatricesLastFrame        = this.__animationUniformsBlock.createUniformArrayMat4("glBonesMatricesLastFrame",        glUniformBlock.Precision.MEDIUMP, 255, null);
     
     this.__standardUniformsBlock.bind((this.__standardUniformsBlockUnitID   = -1));
     this.__animationUniformsBlock.bind((this.__animationUniformsBlockUnitID = -2));
@@ -598,6 +603,30 @@ glContext.__getRootPath = function()
     return parts.join('/');
 }
 
+glContext.prototype.__hookPointerLockEvents = function()
+{
+    let self = this;
+
+    function onPointerLockChange() {
+        self.__pointerLocked = ((document.pointerLockElement || document.mozPointerLockElement) != null); 
+    }
+
+    document.addEventListener("pointerlockchange",    onPointerLockChange);
+    document.addEventListener("mozpointerlockchange", onPointerLockChange);
+
+    document.addEventListener("mousedown", function(e) {
+        if(e.button == 0 && self.__pointerLockEngaged && !self.isPointerLocked()) self.__canvas.requestPointerLock();
+    });
+}
+
+glContext.prototype.enablePointerLock = function(flag) {
+    this.__pointerLockEngaged = ((flag != null) ? flag : true);
+}
+
+glContext.prototype.isPointerLocked = function() {
+    return this.__pointerLocked;
+}
+
 glContext.prototype.createProgram = function(vertexSrcUrl, fragmentSrcUrl, onLoad)
 {
     let self = this;
@@ -827,8 +856,6 @@ glContext.prototype.loadObjFile = function(path, onLoad)
 
 glContext.prototype.createMeshFromObjFile = function(path, onLoad)
 {
-    let self = this;
-
     let mesh = new glMesh(this);
     mesh.__ready = false;
 
@@ -909,8 +936,116 @@ glContext.prototype.loadGltfFile = function(path, onLoadCallback)
     return scene;
 }
 
+glContext.prototype.createMeshFromGltfFile = function(path, onLoad)
+{
+    let mesh = new glMesh(this);
+    
+    let self = this;
+    self.__pendingAssets.push();
+
+    this.loadFile(path, "json", function(fileData)
+    {
+        mesh.clear();
+
+        if(fileData == null) 
+        {
+            self.__pendingAssets.pop();
+            if(onLoad != null) onLoad(mesh);
+
+            return;
+        }
+
+        var basePath = '';
+        let i = path.lastIndexOf('/');
+        if(i >= 0) basePath = path.substring(0, i + 1);
+
+        self.loadGltfFileFromMemory(fileData, function(bufferPath, resolve) {
+            self.loadFile((basePath + bufferPath), "arraybuffer", resolve);
+        },  
+        function(texturePath, resolve) {
+            resolve(null);
+        }, 
+        function(groups, animator, gltf)
+        {
+            for(let i = 0, e = groups.length; i != e; ++i) mesh.add(groups[i].mesh);
+            self.__pendingAssets.pop();
+            
+            if(onLoad != null) onLoad(mesh);
+        });
+    });
+
+    return mesh;
+}
+
+glContext.prototype.createTextureHDR = function(uri, onLoad)
+{
+    let self = this;
+    let gl = this.getGL();
+
+    let texture = new glTextureRGBA16F(this, 1, 1, new Float32Array([0, 0, 0, 0]));
+    texture.__ready = false;
+
+    self.__pendingAssets.push();
+
+    let imageHDR = new HDRImage();
+    imageHDR.onload = function()
+    {
+        let rawDataRGBA16F = new Float32Array(imageHDR.width * imageHDR.height * 4);
+        let rawDataRGB32F  = imageHDR.dataFloat.slice(0);
+    
+        let lightVector = null;
+        let lightColor  = null;
+    
+        for(let i = 0, w = imageHDR.width, h = imageHDR.height, e = w * h, w3 = w * 3, e3 = e * 3, toGamma = 1.0 / 2.24; i < e; ++i)
+        {
+            let j = e3 - w3 - Math.floor(i / w) * w3 + (i % w) * 3;
+    
+            let sampleColor = new glVector3f(rawDataRGB32F[j + 0], rawDataRGB32F[j + 1], rawDataRGB32F[j + 2]);
+            if(lightColor == null || glVector3f.dot(sampleColor, sampleColor) > glVector3f.dot(lightColor, lightColor))
+            {
+                x = Math.floor(j / 3);
+                y = Math.floor(x / w);
+                x = x % w;
+    
+                x /= (w - 1);
+                y /= (h - 1);
+    
+                let phi   = Math.PI * y;
+                let theta = Math.PI * x * 2.0;
+    
+                lightVector = glVector3f.normalize(-Math.cos(theta) * Math.sin(phi), Math.cos(phi), -Math.sin(theta) * Math.sin(phi)).flip();
+                lightColor  = sampleColor;
+            }
+    
+            rawDataRGBA16F[i * 4 + 0] = Math.min(Math.pow(Math.max(rawDataRGB32F[j + 0], 0.0), toGamma), 65503.0);
+            rawDataRGBA16F[i * 4 + 1] = Math.min(Math.pow(Math.max(rawDataRGB32F[j + 1], 0.0), toGamma), 65503.0);
+            rawDataRGBA16F[i * 4 + 2] = Math.min(Math.pow(Math.max(rawDataRGB32F[j + 2], 0.0), toGamma), 65503.0);
+            rawDataRGBA16F[i * 4 + 3] = 1.0;
+        }
+    
+        texture.set(imageHDR.width, imageHDR.height, rawDataRGBA16F);
+        texture.setWrapMode(gl.REPEAT);
+        texture.generateMipmap(true);
+        
+        texture.directionalLightVector = lightVector;
+        texture.directionalLightColor = null;
+        texture.__ready = true;
+            
+        self.__pendingAssets.pop();
+
+        if(onLoad != null) onLoad(texture, rawDataRGBA16F);
+    }
+    imageHDR.src = uri;
+
+    return texture;
+}
+
 glContext.prototype.createTexture = function(image, onLoad, customWidth, customHeight)
 {
+    if((typeof image === "string" || image instanceof String) && !(image.startsWith("data:image")) && (image.toLowerCase()).endsWith(".hdr")) {
+        return this.createTextureHDR(image, onLoad);
+    }
+
     let self = this;
     let gl = this.getGL();
 
@@ -1045,8 +1180,6 @@ glContext.prototype.run = function()
     {
         let self = this;
         let gl = this.getGL();
-    
-        this.__inputDeviceManager.enable();
 
         if(!this.__initialized)
         {
@@ -1058,6 +1191,9 @@ glContext.prototype.run = function()
 
         function animationLoop()
         {
+            let shouldEnableInputManager = (!self.__pointerLockEngaged || self.isPointerLocked());
+            self.__inputDeviceManager.enable(shouldEnableInputManager);
+
             self.__animationFrameRequestID = glContext.__requestAnimationFrame(animationLoop);
 
             let targetWidth  = Math.max(Math.round(self.getClientWidth()  * self.getPixelRatio()), 1);
@@ -1393,12 +1529,12 @@ glContext.prototype.bindVertexBuffer = function(buffer) {
     if(this.__activeBuffer != buffer) this.__gl.bindBuffer(this.__gl.ARRAY_BUFFER, (this.__activeBuffer = buffer));
 }
 
-glContext.prototype.isBufferBound = function(buffer) {
+glContext.prototype.isVertexBufferBound = function(buffer) {
     return (this.__activeBuffer == buffer);
 }
 
 glContext.prototype.unbindVertexBuffer = function(buffer) {
-    if(this.isBufferBound(buffer)) this.bindVertexBuffer(null);
+    if(this.isVertexBufferBound(buffer)) this.bindVertexBuffer(null);
 }
 
 glContext.prototype.bindIndexBuffer = function(buffer) {
@@ -1415,6 +1551,10 @@ glContext.prototype.unbindIndexBuffer = function(buffer) {
 
 glContext.prototype.bindVertexArray = function(vertexArray) {
     if(this.__activeVertexArray != vertexArray) this.__gl.bindVertexArray((this.__activeVertexArray = vertexArray));
+}
+
+glContext.prototype.isVertexArrayBound = function(vertexArray) {
+    return (this.__activeVertexArray == vertexArray);
 }
 
 glContext.prototype.unbindVertexArray = function() {

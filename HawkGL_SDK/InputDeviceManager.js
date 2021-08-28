@@ -209,7 +209,10 @@ InputDeviceManager.prototype.__registerHooks = function()
 
     this.__onMouseMoveHook = function(e)
     {
-        let shouldFireEvent = (self.__enabled && (e.clientX != self.__cursorPosition.x || e.clientY != self.__cursorPosition.y));
+        let movementX = e.movementX || e.mozMovementX || 0;
+        let movementY = e.movementY || e.mozMovementY || 0;
+
+        let shouldFireEvent = (self.__enabled && (movementX != 0 || movementY != 0));
 
         self.__cursorPosition.x = e.clientX;
         self.__cursorPosition.y = e.clientY;
@@ -223,7 +226,7 @@ InputDeviceManager.prototype.__registerHooks = function()
                 }
             });
 
-            for(let i = 0, e = self.__onMouseMoveEvents.length; i != e; ++i) self.__onMouseMoveEvents[i](self.__cursorPosition.x, self.__cursorPosition.y);
+            for(let i = 0, e = self.__onMouseMoveEvents.length; i != e; ++i) self.__onMouseMoveEvents[i](movementX, movementY, self.__cursorPosition.x, self.__cursorPosition.y);
         }
     };
 

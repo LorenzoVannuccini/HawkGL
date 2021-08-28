@@ -212,6 +212,10 @@ glVector4f.max = function(a, b) {
     return new glVector4f(Math.max(a.x, b.x), Math.max(a.y, b.y), Math.max(a.z, b.z), Math.max(a.w, b.w));
 }
 
+glVector4f.equals = function(a, b) {  
+    return a.equals(b);
+}
+
 glVector4f.distance = function(a, b) {    
     return ((new glVector4f(b)).sub(a)).length();
 }

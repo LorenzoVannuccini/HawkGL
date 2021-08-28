@@ -145,20 +145,29 @@ glUniformBlock.prototype.compile = function()
     if(this.empty()) return false;
     
     let shaderBlockSource = "";
+    let lastUniformScalarSource = "";
+    
     shaderBlockSource = "layout(std140) uniform " + this.__name + "\n{\n";
     this.__uniforms.forEach( function(uniform)
     {
         let isArray = (uniform.__elements != null);
         shaderBlockSource += uniform.__precision + " " + uniform.__type + " " + uniform.__name + (isArray ? ("[" + uniform.__elements + "]") : "") + ";\n";
+
+        lastUniformScalarSource = uniform.__name;
+        if(isArray) lastUniformScalarSource += "[0]";
+        if(uniform.__type == "mat2" || uniform.__type == "mat3" || uniform.__type == "mat4") lastUniformScalarSource += "[0]";
+        if(uniform.__type != "int" && uniform.__type != "float") lastUniformScalarSource += ".x";
     });
+    
     shaderBlockSource += "};\n";
 
     this.__shaderBlockSource = shaderBlockSource;
-    let shaderSource = "#version 300 es\n" + this.__shaderBlockSource + "void main(){}";
+    let shaderSource = "#version 300 es\n" + this.__shaderBlockSource;
 
     let activeProgram = this.__ctx.getActiveProgram();
-    let program = new glProgram(this.__ctx, shaderSource, shaderSource);
-    
+    let program = new glProgram(this.__ctx, shaderSource + "void main(){ gl_Position = vec4(" + lastUniformScalarSource + "); }", 
+                                            shaderSource + "out lowp vec4 fragColor; void main(){ fragColor = vec4(" + lastUniformScalarSource + "); }");
+
     this.__didCompile = program.compile();
     this.__ctx.bindProgram(activeProgram);
 
@@ -175,7 +184,7 @@ glUniformBlock.prototype.compile = function()
         
         if(isArray) uniformNames[i] += "[0]";
     }
-    
+
     let uniformBlockLocationID = gl.getUniformBlockIndex(program, this.__name);
     let uniformBlockSizeBytes  = gl.getActiveUniformBlockParameter(program, uniformBlockLocationID, gl.UNIFORM_BLOCK_DATA_SIZE);
     
@@ -184,7 +193,7 @@ glUniformBlock.prototype.compile = function()
 
     let uniformIndices = gl.getUniformIndices(program, uniformNames);
     let uniformOffsets = gl.getActiveUniforms(program, uniformIndices, gl.UNIFORM_OFFSET);
-    
+
     uniformNames = Array.from(this.__uniforms.keys());
     for(let i = 0, e = uniformNames.length; i != e; ++i) 
     {

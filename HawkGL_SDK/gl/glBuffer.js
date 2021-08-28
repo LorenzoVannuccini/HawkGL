@@ -56,6 +56,15 @@ glVertexBuffer.prototype.at = function(index) {
     return glVertex.fromArrayBuffer(this.__bufferData, index * glVertex.sizeBytes());
 }
 
+glVertexBuffer.prototype.release = function()
+{
+    if(this.__bufferData != null && this.__bufferData.length > 0) 
+    {
+        this.bind();
+        this.__bufferData.length = 0;
+    }
+}
+
 glVertexBuffer.prototype.free = function()
 {
     this.unbind();
@@ -113,7 +122,7 @@ glIndexBuffer.prototype.bind = function()
 }
 
 glIndexBuffer.prototype.unbind = function() {
-    this.__ctx.unbindVertexBuffer(this.__bufferID);
+    this.__ctx.unbindIndexBuffer(this.__bufferID);
 }
 
 glIndexBuffer.prototype.size = function() {
@@ -126,6 +135,15 @@ glIndexBuffer.prototype.at = function(index) {
 
 glIndexBuffer.prototype.getType = function() {
     return this.__type;
+}
+
+glIndexBuffer.prototype.release = function()
+{
+    if(this.__bufferData != null && this.__bufferData.length > 0)
+    {
+        this.bind();
+        this.__bufferData.length = 0;
+    }
 }
 
 glIndexBuffer.prototype.free = function()

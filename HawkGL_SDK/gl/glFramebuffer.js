@@ -191,7 +191,7 @@ glFramebufferColorAttachment.prototype.blit = function(filter)
     let viewport = this.__ctx.getViewport();
     if(filter == null) filter = ((this.getWidth() == viewport.w && this.getHeight() == viewport.h) ? gl.NEAREST : gl.LINEAR); 
          
-    this.__blit(viewport.x, viewport.y, viewport.w, viewport.h, gl.COLOR_BUFFER_BIT, (gl.COLOR_ATTACHMENT0 + this.getAttachmentID()), filter);
+    this.__blit(viewport.x, viewport.y, viewport.w, viewport.h, gl.COLOR_BUFFER_BIT, (gl.COLOR_ATTACHMENT0 + this.getAttachmentID()), filter);    
 }
 
 glFramebufferColorAttachment.prototype.getAttachmentID = function() {

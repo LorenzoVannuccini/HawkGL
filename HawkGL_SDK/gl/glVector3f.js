@@ -198,6 +198,10 @@ glVector3f.max = function(a, b) {
     return new glVector3f(Math.max(a.x, b.x), Math.max(a.y, b.y), Math.max(a.z, b.z));
 }
 
+glVector3f.equals = function(a, b) {  
+    return a.equals(b);
+}
+
 glVector3f.distance = function(a, b) {    
     return ((new glVector3f(b)).sub(a)).length();
 }

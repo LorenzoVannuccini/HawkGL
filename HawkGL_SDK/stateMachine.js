@@ -45,6 +45,10 @@ StateMachine.State = function(ctx, onStateEnter, onStateLeave)
     this.onLeave(onStateLeave);
 }
 
+StateMachine.State.prototype.clear = function() {
+    this.__onInputCallbacks.clear();
+}
+
 StateMachine.State.prototype.onEnter = function(callback) {
     this.__onEnterCallback = callback;
 }
@@ -55,8 +59,16 @@ StateMachine.State.prototype.onLeave = function(callback) {
 
 StateMachine.State.prototype.onInput = function(input, state, conditionalFunctor)
 {
-    this.__onInputCallbacks.set(input, function(ctx) {
-        if(conditionalFunctor == null || conditionalFunctor(ctx)) ctx.setState(state);
+    let self = this;
+
+    this.__onInputCallbacks.set(input, function(ctx)
+    {
+        if(conditionalFunctor == null || conditionalFunctor(ctx))
+        {
+            if(state == self) ctx.setState(null, false);
+            
+            ctx.setState(state);
+        }
     });
 }
 

@@ -23,7 +23,7 @@
     SOFTWARE.
 */
 
-let NUM_MAX_JOINTS = 128;
+let NUM_MAX_JOINTS = 256;
 let MinimalGLTFLoader = {};
 
 MinimalGLTFLoader.Type2NumOfComponent =
@@ -88,6 +88,7 @@ MinimalGLTFLoader.Node = function (loader, n, nodeID)
     this.nodeID = nodeID;
     
     this.matrix = new glMatrix4x4f();
+    this.baseMatrix = glMatrix4x4f.identityMatrix();
     this.inverseBindMatrix = glMatrix4x4f.identityMatrix();
 
     this.getTransformMatrixFromTRS(n.translation, n.rotation, n.scale);
@@ -120,6 +121,8 @@ MinimalGLTFLoader.Node.prototype.resetTransform = function()
     this.translation.set(this.__baseTranslation);
     this.rotation.set(this.__baseRotation);
     this.scale.set(this.__baseScale);
+
+    this.updateMatrixFromTRS();
 };
 
 MinimalGLTFLoader.Node.prototype.updateMatrixFromTRS = function()
@@ -260,6 +263,8 @@ MinimalGLTFLoader.OcclusionTextureInfo = function (json)
 
 MinimalGLTFLoader.Material = function (m)
 {
+    if(m == null) m = {};
+
     this.name = m.name !== undefined ? m.name : null;
     
     this.pbrMetallicRoughness = m.pbrMetallicRoughness !== undefined ? new MinimalGLTFLoader.PbrMetallicRoughness( m.pbrMetallicRoughness ) : new MinimalGLTFLoader.PbrMetallicRoughness({
@@ -432,12 +437,15 @@ MinimalGLTFLoader.Animation = function (gltf, a) {
 
     let i, len;
 
-    this.duration = 0.0;
     this.samplers = []; // required, array of animation sampler
+    this.timeStart = null;
+    this.timeEnd = null;
     
-    for (i = 0, len = a.samplers.length; i < len; i++) {
+    for (i = 0, len = a.samplers.length; i < len; i++)
+    {
         this.samplers[i] = new MinimalGLTFLoader.AnimationSampler(gltf, a.samplers[i]);
-        this.duration = Math.max(this.duration, this.samplers[i].endT);
+        this.timeEnd = ((this.timeEnd != null) ? Math.max(this.timeEnd, this.samplers[i].endT) : this.samplers[i].endT);
+        this.timeStart = ((this.timeStart != null) ? Math.min(this.timeStart, this.samplers[i].inputTypedArray[0]) : this.samplers[i].inputTypedArray[0]);
     }
 
     this.channels = [];     //required, array of channel
@@ -452,28 +460,34 @@ MinimalGLTFLoader.Animation = function (gltf, a) {
 
 let gltfAnimation = function(animator, animation, timeStart, timeEnd)
 {
-    if(timeStart == null) timeStart = 0.0;
-
     this.__animator  = animator;
 
     this.__animation = animation;
     this.__name = animation.name;
     
-    this.__timeStart = ((timeStart != null) ? timeStart : 0.0);
-    this.__timeEnd   = ((timeEnd   != null) ? timeEnd   : animation.duration);
+    this.__timeStart = ((timeStart != null) ? timeStart : animation.timeStart);
+    this.__timeEnd   = ((timeEnd   != null) ? timeEnd   : animation.timeEnd);
     this.__duration  = (this.__timeEnd - this.__timeStart);
-
+    
     let self = this;
     this.__events = [];
 
     this.__speed = 1.0;
     this.__setTime(this.__timeStart);    
 
-    this.__pivot = new glVector3f(0.0);
+    this.__repeatMode = glTFAnimator.RepeatMode.REPEAT;
     
     this.__state = animator.__stateManager.createState(function() {
-        self.__animator.playAnimation(self, glTFAnimator.RepeatMode.REPEAT, null, self.__transitionTime);
+        self.__animator.playAnimation(self, self.__repeatMode, null, self.__transitionTime);
     });
+}
+
+gltfAnimation.prototype.setRepeatMode = function(repeatMode) {
+    this.__repeatMode = repeatMode;
+}
+
+gltfAnimation.prototype.getRepeatMode = function() {
+    return this.__repeatMode;
 }
 
 gltfAnimation.prototype.__slice = function(timeStart, timeEnd)
@@ -481,8 +495,8 @@ gltfAnimation.prototype.__slice = function(timeStart, timeEnd)
     if(timeStart == null) timeStart = 0.0;
     if(timeEnd   == null) timeEnd = this.getDuration();
 
-    timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration());
-    timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration());
+    timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration() * 0.999999);
+    timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration() * 0.999999);
     
     let shouldFlip = false;
     if(timeEnd < timeStart)
@@ -513,6 +527,10 @@ gltfAnimation.prototype.onInput = function(input, animation, transitionTime, con
     });
 }
 
+gltfAnimation.prototype.clearInputs = function() {
+    this.__state.clear();
+}
+
 gltfAnimation.prototype.getName = function() {
     return this.__name;
 }
@@ -521,16 +539,20 @@ gltfAnimation.prototype.getDuration = function() {
     return this.__duration;
 }
 
+gltfAnimation.prototype.getTime = function() {
+    return this.__time;
+}
+
+gltfAnimation.prototype.getTimeRate = function()
+{
+    let rate = this.getTime() / this.getDuration();
+    if(this.__speed < 0.0) rate = 1.0 - rate;
+    
+    return rate;
+}
+
 gltfAnimation.prototype.__setTime = function(time) {
     this.__time = this.__lastTime = time;
-}
-
-gltfAnimation.prototype.setPivot = function(x, y, z) {
-    this.__pivot.set(x, y, z);
-}
-
-gltfAnimation.prototype.getPivot = function() {
-    return new glVector3f(this.__pivot);
 }
 
 gltfAnimation.__updateID = 0;
@@ -551,17 +573,18 @@ gltfAnimation.prototype.__resetTransforms = function()
     }
 }
 
-gltfAnimation.prototype.__createTransitionPose = function(transitionTime)
+gltfAnimation.prototype.__createTransitionPose = function(transitionTimeStart, transitionTimeEnd)
 {
     function updateTransitionPose(nodes, node)
     {
         if(node.skinned || node.animated)
-        {
-            node.transitionPose_translation = new glVector3f(node.translation);
+        { 
+            node.transitionPose_translation = new glVector3f(node.translation);    
             node.transitionPose_rotation = new glVector4f(node.rotation);
             node.transitionPose_scale = new glVector3f(node.scale);
             
-            node.transitionTime = transitionTime;
+            node.transitionTimeStart = transitionTimeStart;
+            node.transitionTimeEnd = transitionTimeEnd;
         }
 
         for(let i = 0, e = node.children.length; i != e; ++i) updateTransitionPose(nodes, node.children[i]);
@@ -575,7 +598,7 @@ gltfAnimation.prototype.__createTransitionPose = function(transitionTime)
     }
 }
 
-gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
+gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents, shouldUpdateTransitionPose)
 {
     ++gltfAnimation.__updateID;
 
@@ -583,24 +606,6 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
     if(this.__speed < 0.0) time = this.getDuration() - time;
     
     if(shouldUpdateAnimationEvents) this.__updateEvents();
-
-    let targetPivot = glVector3f.add(this.__animator.__pivot, this.__pivot);
-
-    if(this.__animator.pivotTransitionTime > time)
-    {
-        let t = (time / this.__animator.pivotTransitionTime);
-
-        this.__animator.__pivotAnimation.set((this.__animator.pivotTransitionPose.x * (1.0 - t) + targetPivot.x * t),
-                                             (this.__animator.pivotTransitionPose.y * (1.0 - t) + targetPivot.y * t),
-                                             (this.__animator.pivotTransitionPose.z * (1.0 - t) + targetPivot.z * t));                 
-    } 
-    else
-    {
-        this.__animator.pivotTransitionTime = 0.0;
-        this.__animator.__pivotAnimation.set(targetPivot);
-    }
-
-    let pivotTransform = glMatrix4x4f.translationMatrix(glVector3f.flip(this.__animator.__pivotAnimation));
 
     for(let i = 0, e = this.__animation.channels.length; i != e; ++i)
     {
@@ -630,10 +635,12 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
             case MinimalGLTFLoader.Target.Path.SCALE:       node.scale.set(transform.x, transform.y, transform.z);                 break;
         }
 
-        if(node.transitionTime > time)
+        if(!shouldUpdateTransitionPose) node.transitionTimeStart = node.transitionTimeEnd = 0.0;
+        
+        if(time >= node.transitionTimeStart && time < node.transitionTimeEnd)
         {
-            let t = (time / node.transitionTime);
-            
+            let t = (time - node.transitionTimeStart) / (node.transitionTimeEnd - node.transitionTimeStart);
+        
             node.translation.set((node.transitionPose_translation.x * (1.0 - t) + node.translation.x * t),
                                  (node.transitionPose_translation.y * (1.0 - t) + node.translation.y * t),
                                  (node.transitionPose_translation.z * (1.0 - t) + node.translation.z * t));
@@ -649,19 +656,28 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
 
             node.rotation.set(q.__x, q.__y, q.__z, q.__w);
 
-        } else node.transitionTime = 0.0;
+        } else if(time >= node.transitionTimeEnd) node.transitionTimeStart = node.transitionTimeEnd = 0.0; 
 
         node.updateMatrixFromTRS();
     }
 
     let self = this;
-    let animationID = 0;
+    let animationID   = 0;
+    
     function updateAnimationMatrices(node, parentTransform, sceneMatrices)
     {
         let matrix = sceneMatrices[node.nodeID];
         matrix.set(glMatrix4x4f.mul(parentTransform, node.matrix));
-        
-        if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(pivotTransform, glMatrix4x4f.mul(matrix, node.inverseBindMatrix));
+
+        if(node.name != null && node.name.length > 0) 
+        {
+            let relativeTransform = self.__animator.__nodesRelativeTransforms.get(node.name);
+            if(relativeTransform != null) matrix.mul(relativeTransform);
+
+            self.__animator.__nodesAbsoluteTransforms.set(node.name, matrix);
+        }
+
+        if(node.hasMesh && node.animated) self.__animator.__animationMatricesCurrentFrame[animationID++] = glMatrix4x4f.mul(matrix, node.inverseBindMatrix);
         
         if(node.skinned)
         {
@@ -676,18 +692,20 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents)
                 {
                     let jointNode = joints[i];
 
-                    let tmpMat4 = glMatrix4x4f.mul(glMatrix4x4f.mul(pivotTransform, sceneMatrices[jointNode.nodeID]), skin.inverseBindMatrix[i]);
+                    let tmpMat4 = glMatrix4x4f.mul(sceneMatrices[jointNode.nodeID], skin.inverseBindMatrix[i]);
                     tmpMat4 = glMatrix4x4f.mul(inverseTransform, tmpMat4);
 
                     self.__animator.__bonesMatricesCurrentFrame[skin.baseMatrixID + i] = glMatrix4x4f.mul(tmpMat4, node.inverseBindMatrix);
-                   
+                    self.__animator.__bonesBindPoseTransforms[skin.baseMatrixID + i] = glMatrix4x4f.mul(node.baseMatrix, glMatrix4x4f.inverse(skin.inverseBindMatrix[i]));
+                    self.__animator.__bonesJointsNodeIDs[skin.baseMatrixID + i] = ((node.animated && animationID > 0) ? (animationID - 1) : 255);
+
                     // if (skin.skeleton !== null) {
                     //     mat4.mul(tmpMat4, inverseSkeletonRootMat4, tmpMat4);
                     // }
                 }
             }
         }
-
+            
         for(let i = 0, e = node.children.length; i != e; ++i) updateAnimationMatrices(node.children[i], matrix, sceneMatrices);
     }
     
@@ -727,6 +745,12 @@ gltfAnimation.prototype.__updateEvents = function()
 gltfAnimation.prototype.createTimeRangeEvent = function(timeStart, timeEnd, callback)
 {
     let epsilon = 0.0000001;
+
+    if(this.__speed < 0.0) 
+    {
+        timeStart = this.getDuration() - timeStart;
+        timeEnd   = this.getDuration() - timeEnd;
+    }
     
     timeStart = Math.min(Math.max(timeStart, 0.0), this.getDuration() - epsilon);
     timeEnd   = Math.min(Math.max(timeEnd,   0.0), this.getDuration() - epsilon);
@@ -786,8 +810,10 @@ let glTFAnimator = function(glTF)
     this.__animations   = new Map();
     this.__stateManager = new StateMachine();
     
-    this.__scenes = glTF.scenes;
-    this.__nodes  = glTF.nodes;
+    this.__nodes     = glTF.nodes;
+    this.__bones     = glTF.bones;
+    this.__scenes    = glTF.scenes;
+    this.__nodeNames = glTF.nodeNames;
     
     this.__repeatMode = glTFAnimator.RepeatMode.NO_REPEAT;
     this.RepeatMode   = glTFAnimator.RepeatMode;
@@ -795,15 +821,19 @@ let glTFAnimator = function(glTF)
     this.__activeAnimation  = null;
     this.__onFinishCallback = null;
     
+    this.__nodesRelativeTransforms = new Map();
+    this.__nodesAbsoluteTransforms = new Map();
+    
     this.__animationMatricesCurrentFrame = [];
     this.__animationMatricesLastFrame = [];
     this.__bonesMatricesCurrentFrame = [];
+    this.__bonesBindPoseTransforms = [];
     this.__bonesMatricesLastFrame = [];
+    this.__bonesJointsNodeIDs = [];
 
-    this.__pivotAnimation = new glVector3f(0.0);
-    this.__pivot  = new glVector3f(0.0);
     this.__paused = false;
-    this.__time   = 0.0;
+    this.__timeDelta = 0.0;
+    this.__time = 0.0;
 
     this.__shouldUpdateContext = false;
 
@@ -862,23 +892,43 @@ glTFAnimator.prototype.getAnimationPlaying = function() {
     return this.__activeAnimation;
 }
 
+glTFAnimator.prototype.getNodeName = function(nodeID) {
+    return this.__nodeNames.get(nodeID);
+}
+
+glTFAnimator.prototype.setTransform = function(nodeName, matrix) {
+    this.__nodesRelativeTransforms.set(nodeName, matrix);
+}
+
+glTFAnimator.prototype.getTransform = function(nodeName)
+{
+    let transform = this.__nodesAbsoluteTransforms.get(nodeName);
+    return ((transform != null) ? new glMatrix4x4f(transform) : null);
+}
+
+glTFAnimator.prototype.getJointBindPoseTransform = function(jointID) {
+    return new glMatrix4x4f(this.__bonesBindPoseTransforms[jointID]);
+}
+
+glTFAnimator.prototype.getJointNodeID = function(jointID) {
+    return this.__bonesJointsNodeIDs[jointID];
+}
+
+glTFAnimator.prototype.getBonesPairs = function() {
+    return this.__bones;
+}
+
 glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish, transitionTime)
 {
     if(typeof animation === "string" || animation instanceof String) animation = this.getAnimation(animation);
     
-    transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.325), 0.0), animation.getDuration() * 0.5);
-    if(transitionTime > 0.0)
-    {
-        animation.__createTransitionPose(transitionTime);
-        
-        this.pivotTransitionPose = new glVector3f(this.__pivotAnimation);   
-        this.pivotTransitionTime = transitionTime; 
-    }
-    
-    this.__activeAnimation = animation;
-    this.__onFinishCallback = onFinish;
-    this.__repeatMode = ((repeatMode != null) ? repeatMode : glTFAnimator.RepeatMode.NO_REPEAT);
+    transitionTime = Math.min(Math.max(((transitionTime != null) ? transitionTime : 0.325), 0.0), animation.getDuration() * animation.getSpeed());
+    if(transitionTime > 0.0) animation.__createTransitionPose(0.0, transitionTime);
 
+    this.__onFinishCallback = onFinish;
+    this.__activeAnimation = animation;
+
+    this.__repeatMode = ((repeatMode != null) ? repeatMode : animation.getRepeatMode());
     this.__stateManager.setState(animation.__state, false);
 
     this.rewind();
@@ -891,16 +941,18 @@ glTFAnimator.prototype.__resetAnimationMatrices = function()
     this.__animationMatricesCurrentFrame.length = 0;
 }
 
-glTFAnimator.prototype.__forceUpdate = function(animationTime)
+glTFAnimator.prototype.__forceUpdate = function(animationTime, shouldUpdateTransitionPose)
 {
     let shouldUpdateAnimationEvents = (animationTime != null);
     if(animationTime == null) animationTime = this.__activeAnimation.__time;
 
+    if(shouldUpdateTransitionPose == null) shouldUpdateTransitionPose = true;
+
     this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame.slice(0);
     this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame.slice(0);
     
-    this.__activeAnimation.__update(animationTime, shouldUpdateAnimationEvents);
-
+    this.__activeAnimation.__update(animationTime, shouldUpdateAnimationEvents, shouldUpdateTransitionPose);
+    
     if(this.__animationMatricesLastFrame.length < 1) this.__animationMatricesLastFrame = this.__animationMatricesCurrentFrame;
     if(this.__bonesMatricesLastFrame.length     < 1) this.__bonesMatricesLastFrame = this.__bonesMatricesCurrentFrame;
 
@@ -915,20 +967,25 @@ glTFAnimator.prototype.update = function(dt)
     {
         let lastTime = this.__time;
         let animationSpeed = this.__activeAnimation.__speed;
-        this.__time += Math.abs(animationSpeed) * Math.max(dt, 0.0);
+        
+        this.__timeDelta = Math.abs(animationSpeed) * Math.max(dt, 0.0);
+        this.__time += this.__timeDelta;
 
         let epsilon = 0.0000001;
         
-        let shouldStop        = false;
-        let animationTime     = this.__time;
-        let shouldFlip        = (animationSpeed < 0.0);
-        let animationDuration = this.__activeAnimation.getDuration();
+        let shouldStop = false;
+        let shouldFlip = (animationSpeed < 0.0);
+
+        let self = this;
+        let animationTime = self.__time;
+        let animationDuration = self.__activeAnimation.getDuration();
+        let iterationID = Math.floor(animationTime / ((animationDuration > 0.0) ? animationDuration : 1.0));
 
         switch(this.__repeatMode)
         {
             case glTFAnimator.RepeatMode.REWIND_REPEAT:
             {
-                if(Math.floor(animationTime / animationDuration) % 2 > 0) shouldFlip = !shouldFlip;
+                if(iterationID % 2 > 0) shouldFlip = !shouldFlip;
                 animationTime = (animationTime % animationDuration);
                 
             } break;
@@ -948,31 +1005,50 @@ glTFAnimator.prototype.update = function(dt)
         
         if(shouldFlip) animationTime = animationDuration - animationTime;
                     
-        if(this.__repeatMode > 0 && Math.floor(this.__time / animationDuration) > this.__repeatMode)
+        if(this.__repeatMode > 0 && iterationID > this.__repeatMode)
         {
             animationTime = animationDuration - epsilon;
             shouldStop = true;
         }
 
-        let shouldResetAnimationTime = (Math.floor(lastTime / animationDuration) != Math.floor(this.__time / animationDuration));
+        let shouldResetAnimationTime = (Math.floor(lastTime / animationDuration) != iterationID);
         if(shouldResetAnimationTime) 
         {
-            this.__activeAnimation.__setTime((shouldFlip ? 0.0 : (animationDuration - epsilon)));
+            this.__activeAnimation.__time = (shouldFlip ? 0.0 : (animationDuration - epsilon));
 
             if(this.__repeatMode != glTFAnimator.RepeatMode.NO_REPEAT)
             {    
                 if(this.__repeatMode == glTFAnimator.RepeatMode.REPEAT || this.__repeatMode > 0) this.__activeAnimation.__updateEvents();
-                this.__activeAnimation.__setTime((shouldFlip ? (animationDuration - epsilon) : 0.0));
+                this.__activeAnimation.__lastTime = (shouldFlip ? (animationDuration - epsilon) : 0.0);
+                   
+                return this.update(0.0);
             }
         }
         
-        this.__forceUpdate(animationTime);
+        let shouldUpdateTransitionPose = (iterationID == 0);
+        this.__forceUpdate(animationTime, shouldUpdateTransitionPose);
 
         if(shouldStop)
         {
+            this.__activeAnimation.__time = this.__activeAnimation.getDuration();
             this.__activeAnimation = null;
+            
             if(this.__onFinishCallback != null) this.__onFinishCallback(this);
         }
+    }
+}
+
+glTFAnimator.prototype.setTime = function(time, transitionsTime)
+{
+    if(this.__activeAnimation != null)
+    {
+        time = Math.min(Math.max(time, 0.0), this.__activeAnimation.getDuration());
+        if(transitionsTime > 0.0) this.__activeAnimation.__createTransitionPose(time, Math.min(time + transitionsTime, this.__activeAnimation.getDuration()));
+
+        this.__activeAnimation.__setTime(time);
+
+        this.__time = time;
+        this.update(0.0);
     }
 }
 
@@ -1049,12 +1125,8 @@ glTFAnimator.prototype.rewind = function()
     }
 }
 
-glTFAnimator.prototype.setPivot = function(x, y, z) {
-    this.__pivot.set(x, y, z);
-}
-
-glTFAnimator.prototype.getPivot = function() {
-    return new glVector3f(this.__pivot);
+glTFAnimator.prototype.getTimeDelta = function() {
+    return this.__timeDelta;
 }
 
 glTFAnimator.prototype.createInput = function() {
@@ -1315,6 +1387,8 @@ glTFLoader.prototype._postprocess = function ()
                 // usual skin, hook up
                 node.skin = this.glTF.skins[ node.skin ];
                 node.skinned = true;
+
+                for(let joints = node.skin.joints, j = 0, e = joints.length; j != e; ++j) joints[j].isJoint = true;
                 
             } else {
                 // assume gl_avatar is in use
@@ -1349,6 +1423,7 @@ glTFLoader.prototype._postprocess = function ()
         this.metallicMultiplier  = 1.0;
         this.roughnessMultiplier = 1.0;
 
+        if(material == null) material = new MinimalGLTFLoader.Material();
         this.doubleSided = (material.doubleSided ? true : false);
 
         if(material.normalTexture != null) this.textureNormal = material.normalTexture.index;
@@ -1411,19 +1486,24 @@ glTFLoader.prototype._postprocess = function ()
                  this.doubleSided );    
     }
     
+    let self = this;
+    this.glTF.bones = [];
+    this.glTF.nodeNames = new Map();
     let mappedGroups = new Map();
     
+    let jointID = 0;
     let animationMatrixID = 0;
-    function processNode(node, parentTransform, sceneMatrices, animated)
+    function processNode(lastJointID, node, parentTransform, sceneMatrices, animated)
     {
         let matrix = sceneMatrices[node.nodeID];
         if(matrix == null) matrix = sceneMatrices[node.nodeID] = new glMatrix4x4f();
 
         matrix.set(glMatrix4x4f.mul(parentTransform, node.matrix));
+        node.baseMatrix = new glMatrix4x4f(matrix);
 
         if(animated) node.animated = true;
         node.hasMesh = (node.mesh != null && node.mesh.triangulated);
-
+        
         if(node.hasMesh)
         {
             for(let i = 0, e = node.mesh.primitives.length; i != e; ++i)
@@ -1465,7 +1545,7 @@ glTFLoader.prototype._postprocess = function ()
                         if(glMatrix4x4f.invertible(matrix)) node.inverseBindMatrix = glMatrix4x4f.inverse(matrix);
                         else shouldTransformMesh = false;
                     }
-                   
+
                     if(shouldTransformMesh) mesh.transform(matrix);
 
                     group.mesh.add(mesh);  
@@ -1474,7 +1554,17 @@ glTFLoader.prototype._postprocess = function ()
 
             if(node.animated) ++animationMatrixID;
         }
-        
+
+        if(node.isJoint)
+        {
+            jointID++;
+            
+            if(lastJointID != null) self.glTF.bones.push([lastJointID, (jointID - 1)]);
+            lastJointID = (jointID - 1);
+
+            self.glTF.nodeNames.set(lastJointID, node.name);
+        }
+           
         node.mesh       = null;
         node.extras     = null;
         node.extensions = null;
@@ -1483,11 +1573,11 @@ glTFLoader.prototype._postprocess = function ()
         delete node.extras; 
         delete node.extensions; 
         
-        for(let i = 0, e = node.children.length; i != e; ++i) processNode(node.children[i], matrix, sceneMatrices, node.animated);
+        for(let i = 0, e = node.children.length; i != e; ++i) processNode(lastJointID, node.children[i], matrix, sceneMatrices, node.animated);
     }
 
     for(let i = 0, len = this.glTF.scenes.length, identityMatrix = glMatrix4x4f.identityMatrix(); i != len; ++i) {
-        for(let scene = this.glTF.scenes[i], nodes = scene.nodes, k = 0, e = nodes.length; k != e; ++k) processNode(nodes[k], identityMatrix, scene.matrices);
+        for(let scene = this.glTF.scenes[i], nodes = scene.nodes, k = 0, e = nodes.length; k != e; ++k) processNode(null, nodes[k], identityMatrix, scene.matrices);
     }
 
     this.groups = [];
