@@ -553,9 +553,9 @@ let glContext = function(canvasID)
                                "    if(radiance0_mipID == radianceLUT_mipID) ++radiance0_mipID;                                                                                                                         \n" +
                                "                                                                                                                                                                                        \n" +
                                "    mediump vec4 radiance = mix(base, next, mod(roughness * 15.0, 1.0));                                                                                                                \n" +
-                               "    radiance = mix(textureLod(environmentMap, uv, radiance0_mipID), radiance, smoothstep(0.01, 0.0625, roughnessSquared));                                                              \n" +        
+                               "    radiance = mix(textureLod(environmentMap, uv, radiance0_mipID), radiance, smoothstep(0.01, 0.0625, roughnessSquared));                                                              \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    return radiance;                                                                                                                                                                    \n" +
+                               "    return vec4(pow(radiance.rgb, vec3(1.0 / 2.24)), radiance.a);                                                                                                                       \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "mediump vec4 textureEnvIrradiance(in sampler2D environmentMap, in vec3 n)                                                                                                               \n" +
@@ -569,18 +569,18 @@ let glContext = function(canvasID)
                                "    mediump vec2 uv_lut = mix(vec2(0.0 + texelSize), vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.75);                                                                                    \n" +
                                "    mediump vec4 irradiance = textureLod(environmentMap, uv_lut, radianceLUT_mipID);                                                                                                    \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    return irradiance;                                                                                                                                                                  \n" +
+                               "    return vec4(pow(irradiance.rgb, vec3(1.0 / 2.24)), irradiance.a);                                                                                                                   \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "mediump vec3 textureEnvLightVector(in sampler2D environmentMap)                                                                                                                         \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    mediump int radianceLUT_mipID = int(textureLods(environmentMap) - 10.0); // 512x512                                                                                                 \n" +                                                                                    
+                               "    mediump int radianceLUT_mipID = int(textureLods(environmentMap) - 10.0); // 512x512                                                                                                 \n" +
                                "    return normalize(texelFetch(environmentMap, ivec2(0, 0), radianceLUT_mipID).xyz);                                                                                                   \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "mediump vec3 textureEnvLightColor(in sampler2D environmentMap)                                                                                                                          \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    mediump int radianceLUT_mipID = int(textureLods(environmentMap) - 10.0); // 512x512                                                                                                 \n" +                                                                                             
+                               "    mediump int radianceLUT_mipID = int(textureLods(environmentMap) - 10.0); // 512x512                                                                                                 \n" +
                                "    return texelFetch(environmentMap, ivec2(1, 0), radianceLUT_mipID).xyz;                                                                                                              \n" +
                                "}                                                                                                                                                                                       \n");
 }
@@ -1102,11 +1102,14 @@ glContext.prototype.createTexture = function(image, onLoad, customWidth, customH
 
 glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, customHeight)
 {
-    let environmentMap = new glEnvironmentMap(this, this.createTexture(image, function()
+    let environmentMap = new glEnvironmentMap(this, this.createTexture(image, function(texture)
     {
+        environmentMap.setDirectionalLightColor(texture.directionalLightColor);
+        environmentMap.setDirectionalLightVector(texture.directionalLightVector);
+                
         environmentMap.update();
         environmentMap.updateRadiance();
-
+        
         if(onLoad != null) onLoad(environmentMap);
 
     }, customWidth, customHeight ));
@@ -1873,24 +1876,10 @@ glContext.prototype.getNormalMatrix = function()
 
 glContext.prototype.textureToBase64 = function(texture, width, height)
 {
-    let gl = this.getGL();
-
     if(width  == null) width  = texture.getWidth();
     if(height == null) height = texture.getHeight();
     
-    let activeFramebuffer = this.getActiveFramebuffer();
-
-    let framebuffer = new glFramebuffer(this, width, height);
-    let colorbuffer = framebuffer.createColorAttachmentRGBA8();
-    
-    framebuffer.bind([colorbuffer]);
-    texture.blit();
-
-    let data = new Uint8Array(width * height * 4);
-    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
-
-    framebuffer.unbind();
-    framebuffer.free();
+    let data = texture.toUint8Array(width, height);
     
     let flippedCanvas = document.createElement('canvas');
     let canvas = document.createElement('canvas');
@@ -1914,8 +1903,6 @@ glContext.prototype.textureToBase64 = function(texture, width, height)
 
     context.drawImage(canvas, 0.0, 0.0);
     
-    this.bindFramebuffer(activeFramebuffer);
-
     return flippedCanvas.toDataURL();
 }
 

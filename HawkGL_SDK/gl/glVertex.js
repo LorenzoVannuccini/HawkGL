@@ -264,11 +264,12 @@ glVertex.fromArrayBuffer = function(buffer, byteOffset)
 
 glVertex.prototype.toHash = function()
 {
+    let hash = "";
     let rawData = this.toFloat32Array();
 
     rawData[8] = rawData[9] = rawData[10] = rawData[11] = 0.0; // ignore tangents
 
-    for(let i = 0, e = rawData.length; i != e; ++i) rawData[i] = rawData[i].toPrecision(4);
-
-    return rawData.toString();
+    for(let i = 0, e = rawData.length; i != e; ++i) hash += (Math.floor(rawData[i] / 1e-6)) + ((i < e - 1) ? "," : "");
+    
+    return hash;
 }

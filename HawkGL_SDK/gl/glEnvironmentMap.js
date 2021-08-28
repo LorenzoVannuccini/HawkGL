@@ -85,16 +85,8 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     }
     
     this.__onDrawCallback = onDrawCallback;
-
-    this.__gammaSpaceToLinearBlitProgram = glEnvironmentMap.__genGammaSpaceToLinearBlitProgram(ctx);
-    this.__skyMapGammaToLinearFramebuffer = new glFramebuffer(ctx, skyMap.getWidth(), skyMap.getHeight());
-    this.__skyMap = this.__skyMapGammaToLinearFramebuffer.createColorAttachmentRGBA16F();
-    
-    skyMap.bind(0);
-    this.__skyMapGammaToLinearFramebuffer.bind([this.__skyMap]);
-    this.__gammaSpaceToLinearBlitProgram.runPostProcess();
-    this.__skyMapGammaToLinearFramebuffer.unbind();
-    
+    this.__skyMapGammaSpace = skyMap;
+     
     this.__faceID = 0;
 }  
 
@@ -554,6 +546,19 @@ glEnvironmentMap.prototype.__updateFace = function(position)
 
 glEnvironmentMap.prototype.update = function(position, nFacesUpdates)
 {
+    if(this.__skyMapGammaSpace != null && this.__skyMapGammaSpace.ready())
+    {
+        this.__gammaSpaceToLinearBlitProgram = glEnvironmentMap.__genGammaSpaceToLinearBlitProgram(ctx);
+        this.__skyMapGammaToLinearFramebuffer = new glFramebuffer(ctx, this.__skyMapGammaSpace.getWidth(), this.__skyMapGammaSpace.getHeight());
+        this.__skyMap = this.__skyMapGammaToLinearFramebuffer.createColorAttachmentRGBA16F();
+    
+        this.__skyMapGammaSpace.bind(0);
+        this.__skyMapGammaToLinearFramebuffer.bind([this.__skyMap]);
+        this.__gammaSpaceToLinearBlitProgram.runPostProcess();
+        this.__skyMapGammaToLinearFramebuffer.unbind();
+        this.__skyMapGammaSpace = null;
+    }
+
     if(position == null) position = new glVector3f(0.0);
     if(nFacesUpdates == null) nFacesUpdates = 6;
     

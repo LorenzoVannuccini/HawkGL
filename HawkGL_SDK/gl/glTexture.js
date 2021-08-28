@@ -216,6 +216,32 @@ glTexture.prototype.getTextureID = function() {
     return this.__textureID;
 }
 
+glTexture.prototype.toUint8Array = function(width, height)
+{
+    let gl = ctx.getGL();
+
+    if(width  == null) width  = this.getWidth();
+    if(height == null) height = this.getHeight();
+
+    let activeFramebuffer = ctx.getActiveFramebuffer();
+
+    let framebuffer = new glFramebuffer(ctx, width, height);
+    let colorbuffer = framebuffer.createColorAttachmentRGBA8();
+    
+    framebuffer.bind([colorbuffer]);
+    this.blit();
+
+    let data = new Uint8Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, data);
+
+    framebuffer.unbind();
+    framebuffer.free();
+    
+    ctx.bindFramebuffer(activeFramebuffer);
+
+    return data;
+}
+
 glTexture.prototype.toImage = function(width, height, onLoad) {
     return this.__ctx.textureToImage(this, width, height, onLoad);
 }

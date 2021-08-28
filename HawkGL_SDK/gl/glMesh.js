@@ -93,27 +93,27 @@ glMesh.prototype.__buildVertexBuffers = function()
 
         function hashVertexForNormals(v)
         {
-            return v.position.x.toPrecision(4) + ":" +
-                   v.position.y.toPrecision(4) + ":" +
-                   v.position.z.toPrecision(4) + ":" +
+            return v.position.x.toFixed(6) + ":" +
+                   v.position.y.toFixed(6) + ":" +
+                   v.position.z.toFixed(6) + ":" +
             
-                   v.normal.x.toPrecision(4) + ":" +
-                   v.normal.y.toPrecision(4) + ":" +
-                   v.normal.z.toPrecision(4);
+                   v.normal.x.toFixed(6) + ":" +
+                   v.normal.y.toFixed(6) + ":" +
+                   v.normal.z.toFixed(6);
         }
 
         function hashVertexForTangents(v)
         {
-            return v.position.x.toPrecision(4) + ":" +
-                   v.position.y.toPrecision(4) + ":" +
-                   v.position.z.toPrecision(4) + ":" +
+            return v.position.x.toFixed(6) + ":" +
+                   v.position.y.toFixed(6) + ":" +
+                   v.position.z.toFixed(6) + ":" +
             
-                   v.normal.x.toPrecision(4) + ":" +
-                   v.normal.y.toPrecision(4) + ":" +
-                   v.normal.z.toPrecision(4) + ":" +
+                   v.normal.x.toFixed(6) + ":" +
+                   v.normal.y.toFixed(6) + ":" +
+                   v.normal.z.toFixed(6) + ":" +
 
-                   v.texCoord.x.toPrecision(4) + ":" +
-                   v.texCoord.y.toPrecision(4);
+                   v.texCoord.x.toFixed(6) + ":" +
+                   v.texCoord.y.toFixed(6);
         }
 
         function mapSharedNormalTangent(vertex, normal, tangent, weight)
