@@ -52,7 +52,7 @@ glPrimitive.prototype.__bindStandardAttributes = function()
     gl.vertexAttribPointer(glContext.__texCoordAttribLocation,           2, gl.FLOAT,         false, vertexBytes, offset); offset += 2 * floatBytes;
     gl.vertexAttribPointer(glContext.__normalAttribLocation,             3, gl.FLOAT,         false, vertexBytes, offset); offset += 3 * floatBytes;
     gl.vertexAttribPointer(glContext.__tangentAttribLocation,            4, gl.FLOAT,         false, vertexBytes, offset); offset += 4 * floatBytes;
-    gl.vertexAttribPointer(glContext.__bonesWeightsAttribLocation,       4, gl.UNSIGNED_BYTE, true,  vertexBytes, offset); offset += 4;
+    gl.vertexAttribPointer(glContext.__bonesWeightsAttribLocation,       4, gl.FLOAT,         false, vertexBytes, offset); offset += 4 * floatBytes;
     gl.vertexAttribIPointer(glContext.__bonesIndicesAttribLocation,      4, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 4;
     gl.vertexAttribIPointer(glContext.__animationMatrixIDAttribLocation, 1, gl.UNSIGNED_BYTE,        vertexBytes, offset); offset += 1;
 

@@ -42,7 +42,7 @@ glVertex.nComponents = function() {
 }
 
 glVertex.sizeBytes = function() {
-    return (57 + 3); // 3 padding bytes (total size must be a multiple of 4)
+    return (69 + 3); // 3 padding bytes (total size must be a multiple of 4)
 }
 
 glVertex.prototype.set = function(px, py, pz, tc_u, tc_v, nx, ny, nz)
@@ -208,12 +208,13 @@ glVertex.prototype.toArrayBuffer = function(buffer, byteOffset)
     view.setFloat32(offset, this.tangent.w, true); offset += 4;
     
     let weightSum = (this.bonesWeights.x + this.bonesWeights.y + this.bonesWeights.z + this.bonesWeights.w);
+    if(weightSum <= 0.0) weightSum = 1.0;
     
-    view.setUint8(offset, Math.round((this.bonesWeights.x / weightSum) * 255)); offset += 1;
-    view.setUint8(offset, Math.round((this.bonesWeights.y / weightSum) * 255)); offset += 1;
-    view.setUint8(offset, Math.round((this.bonesWeights.z / weightSum) * 255)); offset += 1;
-    view.setUint8(offset, Math.round((this.bonesWeights.w / weightSum) * 255)); offset += 1;
-    
+    view.setFloat32(offset, this.bonesWeights.x / weightSum, true); offset += 4;
+    view.setFloat32(offset, this.bonesWeights.y / weightSum, true); offset += 4;
+    view.setFloat32(offset, this.bonesWeights.z / weightSum, true); offset += 4;
+    view.setFloat32(offset, this.bonesWeights.w / weightSum, true); offset += 4;
+
     view.setUint8(offset, this.bonesIndices[0]); offset += 1;
     view.setUint8(offset, this.bonesIndices[1]); offset += 1;
     view.setUint8(offset, this.bonesIndices[2]); offset += 1;
@@ -247,10 +248,10 @@ glVertex.fromArrayBuffer = function(buffer, byteOffset)
     vertex.tangent.z = view.getFloat32(offset, true); offset += 4;
     vertex.tangent.w = view.getFloat32(offset, true); offset += 4;
     
-    vertex.bonesWeights.y = view.getUint8(offset); offset += 1;
-    vertex.bonesWeights.z = view.getUint8(offset); offset += 1;
-    vertex.bonesWeights.x = view.getUint8(offset); offset += 1;
-    vertex.bonesWeights.w = view.getUint8(offset); offset += 1;
+    vertex.bonesWeights.y = view.getFloat32(offset); offset += 4;
+    vertex.bonesWeights.z = view.getFloat32(offset); offset += 4;
+    vertex.bonesWeights.x = view.getFloat32(offset); offset += 4;
+    vertex.bonesWeights.w = view.getFloat32(offset); offset += 4;
     
     vertex.bonesIndices[0] = view.getUint8(offset); offset += 1;
     vertex.bonesIndices[1] = view.getUint8(offset); offset += 1;

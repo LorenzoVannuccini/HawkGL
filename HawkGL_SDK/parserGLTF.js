@@ -1529,7 +1529,7 @@ glTFLoader.prototype._postprocess = function ()
                             let vertex = mesh.__vertices[i];
                             
                             let vertexHasAnimations = node.animated;
-                            let vertexHasSkinning = (node.skinned && vertex.bonesIndices[0] >= 0);
+                            let vertexHasSkinning = (node.skinned && (vertex.bonesIndices[0] >= 0 || vertex.bonesIndices[1] >= 0 || vertex.bonesIndices[2] >= 0 || vertex.bonesIndices[3] >= 0));
 
                             if(vertexHasSkinning)
                             {
