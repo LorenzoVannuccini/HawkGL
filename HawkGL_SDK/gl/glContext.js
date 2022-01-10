@@ -109,7 +109,10 @@ let glContext = function(canvasID)
     if(!this.__standardUniformsBlock.empty())  this.__appendShadingHeader(this.__standardUniformsBlock.getShaderSource());
     if(!this.__animationUniformsBlock.empty()) this.__appendShadingHeader(this.__animationUniformsBlock.getShaderSource());
 
-    this.__appendShadingHeader("#define normalize(v) ((dot(v, v) > 0.0) ? normalize(v) : v) // Prevents singularities. Inefficient, but can be used as const express.                             \n" +  
+    this.__appendShadingHeader("precision highp int;                                                                                                                                              \n" +
+                               "precision highp float;                                                                                                                                            \n" +
+                               "                                                                                                                                                                  \n" +  
+                               "#define normalize(v) ((dot(v, v) > 0.0) ? normalize(v) : v) // Prevents singularities. Inefficient, but can be used as const express.                             \n" +  
                                "                                                                                                                                                                  \n" +  
                                "#ifdef GLES_VERTEX_SHADER                                                                                                                                         \n" +
                                "                                                                                                                                                                  \n" +
