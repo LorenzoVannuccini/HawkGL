@@ -222,6 +222,10 @@ let glFramebufferColorAttachmentRGBA16F = function(ctx, framebuffer, attachmentI
 
 glFramebufferColorAttachmentRGBA16F.prototype = Object.create(glFramebufferColorAttachment.prototype);
 
+glFramebufferColorAttachmentRGBA16F.prototype.toFloat16Array = function(width, height) {
+    return this.__renderTexture.toFloat16Array(width, height);
+}
+
 // -------------------------------------------------------------------------------------------
 
 let glFramebufferColorAttachmentRGBA32F = function(ctx, framebuffer, attachmentID, w, h, renderTexture) {
@@ -229,6 +233,10 @@ let glFramebufferColorAttachmentRGBA32F = function(ctx, framebuffer, attachmentI
 }
 
 glFramebufferColorAttachmentRGBA32F.prototype = Object.create(glFramebufferColorAttachment.prototype);
+
+glFramebufferColorAttachmentRGBA32F.prototype.toFloat32Array = function(width, height) {
+    return this.__renderTexture.toFloat32Array(width, height);
+}
 
 // -------------------------------------------------------------------------------------------
 

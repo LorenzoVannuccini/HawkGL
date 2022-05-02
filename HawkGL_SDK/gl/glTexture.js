@@ -286,6 +286,32 @@ glTextureRGBA16F.prototype.set = function(w, h, data)
     this.setWrapMode(gl.CLAMP_TO_EDGE);
 }
 
+glTexture.prototype.toFloat16Array = function(width, height)
+{
+    let gl = ctx.getGL();
+
+    if(width  == null) width  = this.getWidth();
+    if(height == null) height = this.getHeight();
+
+    let activeFramebuffer = ctx.getActiveFramebuffer();
+
+    let framebuffer = new glFramebuffer(ctx, width, height);
+    let colorbuffer = framebuffer.createColorAttachmentRGBA16F();
+    
+    framebuffer.bind([colorbuffer]);
+    this.blit();
+
+    let data = new Float32Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, data);
+
+    framebuffer.unbind();
+    framebuffer.free();
+    
+    ctx.bindFramebuffer(activeFramebuffer);
+
+    return data;
+}
+
 // -------------------------------------------------------------------------------------------
 
 let glTextureRGBA32F = function(ctx, w, h, data) {
@@ -302,6 +328,32 @@ glTextureRGBA32F.prototype.set = function(w, h, data)
 
     this.setFilterMode(gl.LINEAR, gl.LINEAR);
     this.setWrapMode(gl.CLAMP_TO_EDGE);
+}
+
+glTexture.prototype.toFloat32Array = function(width, height)
+{
+    let gl = ctx.getGL();
+
+    if(width  == null) width  = this.getWidth();
+    if(height == null) height = this.getHeight();
+
+    let activeFramebuffer = ctx.getActiveFramebuffer();
+
+    let framebuffer = new glFramebuffer(ctx, width, height);
+    let colorbuffer = framebuffer.createColorAttachmentRGBA32F();
+    
+    framebuffer.bind([colorbuffer]);
+    this.blit();
+
+    let data = new Float32Array(width * height * 4);
+    gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, data);
+
+    framebuffer.unbind();
+    framebuffer.free();
+    
+    ctx.bindFramebuffer(activeFramebuffer);
+
+    return data;
 }
 
 // -------------------------------------------------------------------------------------------
