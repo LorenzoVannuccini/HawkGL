@@ -33,6 +33,183 @@ let glDepthTracingTexture = function(ctx, depthMap, w, h)
 
 glDepthTracingTexture.textureFormat = Object.freeze({"RGBA16F": 0, "RGBA32F": 1});
 
+glDepthTracingTexture.__glslAPI = function()
+{
+    return "lowp int DT_getSliceID(const highp float z, const highp vec2 depthRange) {                                                                                                                \n" +
+           "    return clamp(int(((z - depthRange.x) / (depthRange.y - depthRange.x)) * 10.0), 0, 9);                                                                                                 \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "highp vec2 DT_getSliceDepthSection(const lowp int sliceID, const highp vec2 depthRange)                                                                                                   \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    highp vec2 depthSection = clamp(vec2(0, 0.1) + 0.1 * float(sliceID), 0.0, 1.0);                                                                                                       \n" +
+           "    depthSection = depthRange.x + (depthRange.y - depthRange.x) * depthSection;                                                                                                           \n" +
+           "                                                                                                                                                                                          \n" +
+           "    return depthSection;                                                                                                                                                                  \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "highp vec2 DT_sampleDepthLOD(in lowp sampler2D depthMap, in highp ivec3 voxelID, in vec2 depthRange, in highp ivec2 lodID)                                                                \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    lodID.x = 2 * lodID.x;                                                                                                                                                                \n" +
+           "    lowp int sliceID = voxelID.z / 2;                                                                                                                                                     \n" +
+           "                                                                                                                                                                                          \n" +
+           "    if(lodID.x > 0 && sliceID < 4)                                                                                                                                                        \n" +
+           "    {                                                                                                                                                                                     \n" +
+           "        highp ivec2 bufferSize = textureSize(depthMap, lodID.x);                                                                                                                          \n" +
+           "                                                                                                                                                                                          \n" +
+           "        voxelID.x += bufferSize.x * (sliceID % 2);                                                                                                                                        \n" +
+           "        voxelID.y += bufferSize.y * (sliceID / 2);                                                                                                                                        \n" +
+           "        lodID.x -= 1;                                                                                                                                                                     \n" +
+           "    }                                                                                                                                                                                     \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp vec4 depthData = texelFetch(depthMap, voxelID.xy, lodID.x);                                                                                                                     \n" +
+           "    highp vec2 depthSection = ((lodID.x * (voxelID.z % 2) == 0) ? depthData.xy : depthData.zw);                                                                                           \n" +
+           "                                                                                                                                                                                          \n" +
+           "    return depthSection;                                                                                                                                                                  \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "highp vec2 DT_traceVoxel(const in highp vec3 ro, const in highp vec3 rd, const in highp ivec2 voxelID, const in highp vec2 voxelSize, const in highp vec2 depthSection, const float bias) \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    if(depthSection.x >= 1.0) return vec2(-1);                                                                                                                                            \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp vec2 voxelPosition = (vec2(voxelID) + 0.5) * voxelSize;                                                                                                                         \n" +
+           "    highp float thickness = abs(depthSection.y - depthSection.x) + bias;                                                                                                                  \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp vec3  m = 1.0 / normalize(max(abs(rd), 1e-6) * (step(0.0, rd) * 2.0 - 1.0));                                                                                                    \n" +
+           "    highp vec3  n = m * (ro - vec3(voxelPosition, 0.5 * thickness + min(depthSection.x, depthSection.y)));                                                                                \n" +
+           "    highp vec3  k = abs(m) * ((1.0 + bias) * vec3(voxelSize, thickness)) * 0.5;                                                                                                           \n" +
+           "    highp vec3  t1 = -n - k, t2 = -n + k;                                                                                                                                                 \n" +
+           "    highp float tN = max(max(t1.x, t1.y), t1.z);                                                                                                                                          \n" +
+           "    highp float tF = min(min(t2.x, t2.y), t2.z);                                                                                                                                          \n" +
+           "                                                                                                                                                                                          \n" +
+           "    return ((tN <= tF && tF >= 0.0) ? vec2(tN, tF) : vec2(-1));                                                                                                                           \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "float DT_randomSeed = 0.0;                                                                                                                                                                \n" +
+           "bool  DT_randomSeedInitialized = false;                                                                                                                                                   \n" +
+           "                                                                                                                                                                                          \n" +
+           "void DT_srand(const highp float seed)                                                                                                                                                     \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    DT_randomSeed = seed;                                                                                                                                                                 \n" +
+           "    DT_randomSeedInitialized = true;                                                                                                                                                      \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "float DT_random() {                                                                                                                                                                       \n" +
+           "    return fract(sin(++DT_randomSeed) * 43758.5453123);                                                                                                                                   \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "highp vec3 DT_randomOffsetAA(const highp vec2 voxelSize)                                                                                                                                  \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    highp vec3 v = vec3(-1.0 + 2.0 * DT_random(), -1.0 + 2.0 * DT_random(), -1.0 + 2.0 * DT_random());                                                                                    \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp float l = dot(v, v);                                                                                                                                                            \n" +
+           "    if(l > 0.0) v /= sqrt(l);                                                                                                                                                             \n" +
+           "    v *= max(voxelSize.x, voxelSize.y);                                                                                                                                                   \n" +
+           "                                                                                                                                                                                          \n" +
+           "    return v;                                                                                                                                                                             \n" +
+           "}                                                                                                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "struct DT_Hit                                                                                                                                                                             \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    highp vec4 coord; // intersection coordinates + intersection distance                                                                                                                 \n" +
+           "    highp int  steps; // number of processed iterations (texture lookups)                                                                                                                 \n" +
+           "    lowp  int  lod;   // intersection LOD (0 = ground truth)                                                                                                                              \n" +
+           "};                                                                                                                                                                                        \n" +
+           "                                                                                                                                                                                          \n" +
+           "struct DT_Profile                                                                                                                                                                         \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    highp int maxIterations;  // max allowed tracing iterations (texture lookups), lower iterations affect accuracy                                                                       \n" +
+           "    bool hintTraceFromWithin; // hints likelihood of ray shooting from within the depth field (eg. SSR, SSAO etc)                                                                         \n" +
+           "    bool useDithering;        // enables / disables dithering for temporal anti-aliasing                                                                                                  \n" +
+           "};                                                                                                                                                                                        \n" +
+           "                                                                                                                                                                                          \n" +
+           "bool DT_trace( in lowp sampler2D depthMap, // pre-processed depth field texture                                                                                                           \n" +
+           "               const DT_Profile profile,   // ray-tracing profile (see data struct for more info)                                                                                         \n" +
+           "               in highp vec3 ro,           // ray segment origin, in NDC space                                                                                                            \n" +
+           "               in highp vec3 re,           // ray segment endpoint, in NDC space                                                                                                          \n" +
+           "               out DT_Hit hit )            // output (see data struct for more info)                                                                                                      \n" +
+           "{                                                                                                                                                                                         \n" +
+           "    highp ivec2 bufferSize = textureSize(depthMap, 0); // depth buffer resolution                                                                                                         \n" +
+           "    highp vec2 voxelSize = (vec2(1.0) / vec2(bufferSize)); // workout voxels size                                                                                                         \n" +
+           "                                                                                                                                                                                          \n" +
+           "    lowp int maxLod = int(log2(float(max(bufferSize.x, bufferSize.y)))); // workout n. of mip LODs                                                                                        \n" +
+           "    maxLod /= 2; // LOD to powers of 4 (required from acceleration data structure)                                                                                                        \n" +
+           "                                                                                                                                                                                          \n" +
+           "    if(profile.useDithering) // should use dithering ?                                                                                                                                    \n" +
+           "    {                                                                                                                                                                                     \n" +
+           "        ro += normalize(re - ro) * voxelSize.x * DT_random();                                                                                                                             \n" +
+           "        ro += DT_randomOffsetAA(voxelSize); // randomly jitter ray origin                                                                                                                 \n" +
+           "        re += DT_randomOffsetAA(voxelSize); // randomly jitter ray end                                                                                                                    \n" +
+           "    }                                                                                                                                                                                     \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp vec3  rs = ro; // ray origin                                                                                                                                                    \n" +
+           "    highp vec3  rd = (re - ro); // ray vector                                                                                                                                             \n" +
+           "    highp float rl = dot(rd, rd); // ray squared length                                                                                                                                   \n" +
+           "    if(rl <= 0.0) return false; // not a ray, early out                                                                                                                                   \n" +
+           "    rd /= sqrt(rl); // normalize ray vector                                                                                                                                               \n" +
+           "                                                                                                                                                                                          \n" +
+           "    highp vec2 depthRange = texelFetch(depthMap, ivec2(0), 0).zw; // fetch depth range                                                                                                    \n" +
+           "    highp vec3 depthVolumeSize = vec3(vec2(1), (depthRange.y - depthRange.x));                                                                                                            \n" +
+           "    highp vec3 depthVolumeOrigin = vec3(vec2(0.5), (depthRange.x + depthRange.y) * 0.5);                                                                                                  \n" +
+           "                                                                                                                                                                                          \n" +
+           "    hit.lod = (profile.hintTraceFromWithin ? 0 : (maxLod - 1)); // start search from ground-truth if ray shoots from within                                                               \n" +
+           "                                                                // otherwise search from max LOD (faster convergence)                                                                     \n" +
+           "                                                                                                                                                                                          \n" +
+           "    vec2 hitsDistance = DT_traceVoxel(ro, rd, ivec2(0), vec2(1), depthRange, 0.0); // test ray against depth volume                                                                       \n" +
+           "    if(hitsDistance.y < 0.0) return false; // ray is outside and doesn't intersect, early out                                                                                             \n" +
+           "    if(hitsDistance.x > 0.0) // ray is outside and it intersects                                                                                                                          \n" +
+           "    {                                                                                                                                                                                     \n" +
+           "        ro += rd * (hitsDistance.x + 9.9999997e-05); // move ray origin inside depth volume intersection point                                                                            \n" +
+           "                                                     // add small bias to compensate for floating point errors                                                                            \n" +
+           "        hit.lod = (maxLod - 1);                      // start search from max LOD (faster convergence)                                                                                    \n" +
+           "    }                                                                                                                                                                                     \n" +
+           "    // ray is inside, begin search                                                                                                                                                        \n" +
+           "                                                                                                                                                                                          \n" +
+           "    bool rayLeftSurface = false, intersects = false; // intersection outcome                                                                                                              \n" +
+           "    for(hit.steps = 0; hit.steps < profile.maxIterations && hit.lod >= 0; ++hit.steps) // keep searching as long as LOD is in range and within max iterations                             \n" +
+           "    {                                                                                                                                                                                     \n" +
+           "        highp ivec2 bufferSize = textureSize(depthMap, 2 * hit.lod); // LOD resolution                                                                                                    \n" +
+           "        highp vec2 voxelSize = vec2(1.0) / vec2(bufferSize); // workout current voxel size                                                                                                \n" +
+           "                                                                                                                                                                                          \n" +
+           "        highp int parentLodID = (hit.lod + 1); // parent LOD index (next LOD)                                                                                                             \n" +
+           "        highp vec2 currentCellSize = (((parentLodID <= maxLod)) ? (vec2(1.0) / vec2(textureSize(depthMap, 2 * parentLodID))) : vec2(1.0)); // workout cell size                           \n" +
+           "        highp ivec2 currentCellXY = ivec2(floor(ro.xy / currentCellSize)); // workout current cell coords, 1 cell -> 4x4 voxels                                                           \n" +
+           "                                                                                                                                                                                          \n" +
+           "        highp int sliceID = DT_getSliceID(ro.z, depthRange); // workout depth slice from Z                                                                                                \n" +
+           "        highp ivec2 voxelID = ivec2(floor(ro.xy / voxelSize)); // workout current voxel within cell                                                                                       \n" +
+           "        highp vec2 depthSection = DT_getSliceDepthSection(sliceID, depthRange); // workout current slice depth section                                                                    \n" +
+           "        highp vec2 voxelDepth = DT_sampleDepthLOD(depthMap, ivec3(voxelID, sliceID), depthRange, ivec2(hit.lod, maxLod)); // fetch voxel depth (front-back)                               \n" +
+           "                                                                                                                                                                                          \n" +
+           "        vec2 hitsDistance = DT_traceVoxel(ro, rd, voxelID, voxelSize, voxelDepth, 4e-4); // test ray against voxel                                                                        \n" +
+           "        bool hitsVoxel = (hitsDistance.y > 0.0);                                                                                                                                          \n" +
+           "                                                                                                                                                                                          \n" +
+           "        if(!hitsVoxel || hit.lod > 1) rayLeftSurface = true;                                                                                                                              \n" +
+           "        else if(!rayLeftSurface) hitsVoxel = false;                                                                                                                                       \n" +
+           "                                                                                                                                                                                          \n" +
+           "        if(!hitsVoxel) // misses ? -> march and un-subdivide                                                                                                                              \n" +
+           "        {                                                                                                                                                                                 \n" +
+           "            hitsDistance = DT_traceVoxel(ro, rd, voxelID, voxelSize, depthSection, 4e-4); // march to depth section farther hit (can't miss as ray is inside it)                          \n" +
+           "            highp ivec2 newCellXY = ivec2(floor((ro += rd * hitsDistance.y).xy / currentCellSize)); // workout current cell XY coords                                                     \n" +
+           "            if(newCellXY != currentCellXY) ++hit.lod; // different cell ? ascend LOD (divide et impera)                                                                                   \n" +
+           "        }                                                                                                                                                                                 \n" +
+           "        else // hits ? -> march and subdivide                                                                                                                                             \n" +
+           "        {                                                                                                                                                                                 \n" +
+           "            if(hitsDistance.x > 0.0) ro += rd * hitsDistance.x; // march to closest hit                                                                                                   \n" +
+           "            hit.coord.xyz = ro, intersects = true; // store intersection                                                                                                                  \n" +
+           "            --hit.lod; // descend LOD (divide et impera)                                                                                                                                  \n" +
+           "        }                                                                                                                                                                                 \n" +
+           "                                                                                                                                                                                          \n" +
+           "        highp vec3 rayVector = (ro - rs); // ray vector                                                                                                                                   \n" +
+           "        highp vec3 edge = abs((ro - depthVolumeOrigin) / depthVolumeSize); // distance from depth volume origin                                                                           \n" +
+           "        if(((hit.lod > maxLod || max(max(edge.x, edge.y), edge.z) >= 0.5) || dot(rayVector, rayVector) > rl)) return false; // miss: ray left depth boundaries or travelled too far       \n" +
+           "    }                                                                                                                                                                                     \n" +
+           "                                                                                                                                                                                          \n" +
+           "    hit.coord.w = distance(ro, hit.coord.xyz); // update marched distance                                                                                                                 \n" +
+           "    hit.lod = clamp(hit.lod, 0, maxLod) * 2; // correct LOD back to POT                                                                                                                   \n" +
+           "                                                                                                                                                                                          \n" +
+           "    return intersects; // return intersection outcome                                                                                                                                     \n" +
+           "}                                                                                                                                                                                         \n";    
+} 
+
 glDepthTracingTexture.__genDepthFittingProgram = function(ctx)
 {
     if(glDepthTracingTexture.__depthFittingProgram_instances == null) glDepthTracingTexture.__depthFittingProgram_instances = new Map();
@@ -50,25 +227,31 @@ glDepthTracingTexture.__genDepthFittingProgram = function(ctx)
                                      "    texCoords = gl_Position.xy * 0.5 + vec2(0.5);                                                    \n" +
                                      "}                                                                                                    \n",
 
-                                     "#version 300 es                                                                                      \n" +
-                                     "uniform highp sampler2D srcTexture;                                                                  \n" +
-                                     "                                                                                                     \n" +
-                                     "in highp vec2 texCoords;                                                                             \n" +
-                                     "out highp vec4 depthRange;                                                                           \n" +
-                                     "                                                                                                     \n" +
-                                     "void main()                                                                                          \n" +
-                                     "{                                                                                                    \n" +
-                                     "    ivec2 bufferSize = textureSize(srcTexture, 0);                                                   \n" +
-                                     "    ivec2 coord = ivec2(texCoords * vec2(bufferSize) - 0.5);                                         \n" +
-                                     "                                                                                                     \n" +
-                                     "    mat4 c = mat4(texelFetch(srcTexture, clamp(coord + ivec2(0, 0), ivec2(0), bufferSize - 1), 0),   \n" +
-                                     "                  texelFetch(srcTexture, clamp(coord + ivec2(0, 1), ivec2(0), bufferSize - 1), 0),   \n" +
-                                     "                  texelFetch(srcTexture, clamp(coord + ivec2(1, 0), ivec2(0), bufferSize - 1), 0),   \n" +
-                                     "                  texelFetch(srcTexture, clamp(coord + ivec2(1, 1), ivec2(0), bufferSize - 1), 0));  \n" +
-                                     "                                                                                                     \n" +
-                                     "    depthRange.xy = depthRange.zw = vec2(min(min(min(c[0].x, c[1].x), c[2].x), c[3].x),              \n" +
-                                     "                                         max(max(max(c[0].y, c[1].y), c[2].y), c[3].y));             \n" +
-                                     "}                                                                                                    \n");
+                                     "#version 300 es                                                                                              \n" +
+                                     "uniform highp sampler2D srcTexture;                                                                          \n" +
+                                     "                                                                                                             \n" +
+                                     "in highp vec2 texCoords;                                                                                     \n" +
+                                     "out highp vec4 depthRange;                                                                                   \n" +
+                                     "                                                                                                             \n" +
+                                     "void main()                                                                                                  \n" +
+                                     "{                                                                                                            \n" +
+                                     "    ivec2 bufferSize = textureSize(srcTexture, 0);                                                           \n" +
+                                     "    vec2 texCoords = floor(texCoords * vec2(bufferSize)) / vec2(bufferSize);                                 \n" +
+                                     "    ivec2 coord = ivec2(texCoords * vec2(bufferSize) - 0.5);                                                 \n" +
+                                     "                                                                                                             \n" +
+                                     "    vec2 c[4] = vec2[4](texelFetch(srcTexture, clamp(coord + ivec2(0, 0), ivec2(0), bufferSize - 1), 0).xy,  \n" +
+                                     "                        texelFetch(srcTexture, clamp(coord + ivec2(1, 0), ivec2(0), bufferSize - 1), 0).xy,  \n" +
+                                     "                        texelFetch(srcTexture, clamp(coord + ivec2(0, 1), ivec2(0), bufferSize - 1), 0).xy,  \n" +
+                                     "                        texelFetch(srcTexture, clamp(coord + ivec2(1, 1), ivec2(0), bufferSize - 1), 0).xy); \n" +
+                                     "                                                                                                             \n" +
+                                     "    depthRange = vec4(1, 0, 1, 0);                                                                           \n" +
+                                     "                                                                                                             \n" +
+                                     "    for(int i = 0; i < 4; ++i)                                                                               \n" +
+                                     "    {                                                                                                        \n" +
+                                     "        if(c[i].x < 1.0) depthRange.xy = depthRange.zw = vec2(min(depthRange.x, clamp(c[i].x, 0.0, 1.0)),    \n" +
+                                     "                                                              max(depthRange.y, clamp(c[i].y, 0.0, 1.0)));   \n" +
+                                     "    }                                                                                                        \n" +
+                                     "}                                                                                                            \n");
 
         if(!program.compile()) console.error(program.getLastError());
         program.createUniformSampler("srcTexture", 0);
@@ -97,7 +280,6 @@ glDepthTracingTexture.__genDepthAdsProgram = function(ctx)
                                      "}                                                                                                    \n",
 
                                      "#version 300 es                                                                                                        \n" +
-                                     "#define USE_LOGARITMIC_DEPTH (0)                                                                                       \n" +
                                      "                                                                                                                       \n" +
                                      "uniform highp sampler2D lastLodTexture;                                                                                \n" +
                                      "uniform highp sampler2D depthTexture;                                                                                  \n" +
@@ -111,11 +293,6 @@ glDepthTracingTexture.__genDepthAdsProgram = function(ctx)
                                      "vec2 getSliceDepthSection(in int sliceID, in vec2 depthRange)                                                          \n" +
                                      "{                                                                                                                      \n" +
                                      "    vec2 depthSection = clamp(vec2(0, 0.1) + 0.1 * float(sliceID), 0.0, 1.0);                                          \n" +
-                                     "                                                                                                                       \n" +
-                                     "#if USE_LOGARITMIC_DEPTH                                                                                               \n" +
-                                     "    depthSection = depthSection * depthSection;                                                                        \n" +
-                                     "#endif                                                                                                                 \n" +
-                                     "                                                                                                                       \n" +
                                      "    depthSection = depthRange.x + (depthRange.y - depthRange.x) * depthSection;                                        \n" +
                                      "                                                                                                                       \n" +
                                      "    return depthSection;                                                                                               \n" +
@@ -356,8 +533,16 @@ glDepthTracingTexture.prototype.set = function(depthMap, w, h)
     if(w == null) w = depthMap.getWidth();
     if(h == null) h = depthMap.getHeight();
     
-    w = Math.min(closestPot(w), 4096);
-    h = Math.min(closestPot(h), 4096);
+    w = Math.min(Math.max(closestPot(w), 4), 4096);
+    h = Math.min(Math.max(closestPot(h), 4), 4096);
+    
+    let wider = (w > h);
+    let ar = (wider ? w : h) / (wider ? h : w);
+    if(ar > 2) // aspect ratio must be <= 2
+    {
+        if(wider) h = w / 2;
+        else w = h / 2;
+    }
     
     this.__resize(w, h, textureFormat);
 

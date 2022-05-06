@@ -94,6 +94,37 @@ glAABB.prototype.__fit_aabb = function(aabb) {
     for(let i = 0; i < 8; ++i) this.__fit_vec3(glVector3f.add(aabb.position, glVector3f.mul(aabb.size, glAABB.__cornerKernel[i])));
 }
 
+glAABB.prototype.contains = function(other)
+{
+    if(other.__is_glAABB) return this.__contains_aabb(other);
+    else if(other.__is_glVector3f) return this.__contains_vec3(other);
+}
+
+glAABB.prototype.__contains_vec3 = function(point) 
+{
+    if(this.empty()) return false;
+    
+    let halfSize = glVector3f.mul(this.size, 0.5);
+    let clampedPoint = glVector3f.max(glVector3f.sub(this.position, halfSize), glVector3f.min(glVector3f.add(this.position, halfSize), point));
+
+    return clampedPoint.equals(point);
+}
+
+glAABB.prototype.__contains_aabb = function(aabb) 
+{
+    if(this.empty() || aabb.empty()) return false;
+    
+    for(let i = 0; i < 8; ++i)
+    {
+        let cornerA = glVector3f.add(this.position, glVector3f.mul(this.size, glAABB.__cornerKernel[i]));
+        let cornerB = glVector3f.add(aabb.position, glVector3f.mul(aabb.size, glAABB.__cornerKernel[i]));
+    
+        if(this.__contains_vec3(cornerB) || aabb.__contains_vec3(cornerA)) return true;
+    }
+
+    return false;
+}
+
 glAABB.prototype.transform = function(matrix)
 {
     if(!this.empty())

@@ -409,6 +409,13 @@ glProgram.prototype.compile = function()
         status *= gl.getProgramParameter(this.__programID, gl.LINK_STATUS);
         
         this.__ctx.__bindProgramStandardUniformsBlock(this);
+
+        let shaderDebugger = this.__ctx.__extensions.shadersDebugger;
+        if(shaderDebugger != null)
+        {
+            this.__vertexShaderSourceCompiled = shaderDebugger.getTranslatedShaderSource(this.__vertexShader.getShaderID());
+            this.__fragmentShaderSourceCompiled = shaderDebugger.getTranslatedShaderSource(this.__fragmentShader.getShaderID());
+        }
     }
 
     this.__ready = status;
