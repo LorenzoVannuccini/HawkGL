@@ -72,8 +72,8 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     for(let i = 0; i < 2; ++i)
     {
         this.__radianceIntegral[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA32F();
-        this.__radianceResolved[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA16F();
-        this.__radianceSmoothed[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA16F();
+        this.__radianceResolved[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA32F();
+        this.__radianceSmoothed[i] = this.__radianceFramebuffer[i].createColorAttachmentRGBA32F();
 
         this.__radianceIntegral[i].setFilterMode(gl.LINEAR, gl.LINEAR);
         this.__radianceResolved[i].setFilterMode(gl.LINEAR, gl.LINEAR);
@@ -85,7 +85,8 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     }
     
     this.__onDrawCallback = onDrawCallback;
-    this.__skyMapGammaSpace = skyMap;
+    this.__skyMapGammaSpace = this.__skyMap = skyMap;
+    if(skyMap.__renderTexture != null) this.__skyMapGammaSpace = null;
      
     this.__faceID = 0;
 }  
@@ -124,14 +125,14 @@ glEnvironmentMap.__genEnvMappingProgram = function(ctx)
                                      "const float PI_2      = PI * 2.0;                                                                                              \n" +
                                      "const float PI_OVER_2 = PI * 0.5;                                                                                              \n" +
                                      "                                                                                                                               \n" +
-                                     "vec3 uvToPolar(in vec2 uv)                                                                                                                                                                                      \n" +
-                                     "{                                                                                                                                                                                                               \n" +
-                                     "    float phi = PI * uv.y;                                                                                                                                                                                      \n" +
-                                     "    float theta = PI_2 * uv.x;                                                                                                                                                                                  \n" +
-                                     "                                                                                                                                                                                                                \n" +
-                                     "    return normalize(vec3(-cos(theta) * sin(phi), -cos(phi), -sin(theta) * sin(phi)));                                                                                                                          \n" +
-                                     "}                                                                                                                                                                                                               \n" +
-                                     "                                                                                                                                                                                                                \n" +
+                                     "vec3 uvToPolar(in vec2 uv)                                                                                                     \n" +
+                                     "{                                                                                                                              \n" +
+                                     "    float phi = PI * uv.y;                                                                                                     \n" +
+                                     "    float theta = PI_2 * uv.x;                                                                                                 \n" +
+                                     "                                                                                                                               \n" +
+                                     "    return normalize(vec3(-cos(theta) * sin(phi), -cos(phi), -sin(theta) * sin(phi)));                                         \n" +
+                                     "}                                                                                                                              \n" +
+                                     "                                                                                                                               \n" +
                                      "void main()                                                                                                                    \n" +
                                      "{                                                                                                                              \n" +
                                      "    vec4 patchUV = (glProjectionMatrix * mat4(glNormalMatrix)) * vec4(uvToPolar(texCoords), 1.0);                              \n" +
@@ -236,13 +237,14 @@ glEnvironmentMap.__genRadianceIntegralPDF_LUT = function(ctx)
                                          "{                                                                                                                                                                                                               \n" +
                                          "    pdf = vec4(0.0);                                                                                                                                                                                            \n" +
                                          "                                                                                                                                                                                                                \n" +
-                                         "    vec2 texCoords = texCoords * 4.0;                                                                                                                                                                           \n" +
+                                         "    const float texelSize = 1.0 / 512.0;                                                                                                                                                                        \n" +
+                                         "    vec2 texCoords = mix(vec2(0), vec2(1) + 4.0 * texelSize, fract(texCoords * 4.0));                                                                                                                           \n" +
                                          "    float mapID = (floor(gl_FragCoord.x / 128.0) + 4.0 * floor(gl_FragCoord.y / 128.0));                                                                                                                        \n" +
                                          "                                                                                                                                                                                                                \n" +
-                                         "    float roughness = (mapID / 15.0);                                                                                                                                                                           \n" +
+                                         "    float roughness = (mapID / 15.0) * float(int(mapID) != 1);                                                                                                                                                  \n" +
                                          "    float roughnessSquared = (roughness * roughness);                                                                                                                                                           \n" +
                                          "                                                                                                                                                                                                                \n" +
-                                         "    vec3 normal = uvToPolar(mod(texCoords, vec2(1.0)));                                                                                                                                                         \n" +
+                                         "    vec3 normal = uvToPolar(texCoords);                                                                                                                                                                         \n" +
                                          "    uint nSamples = max(uint(1024.0 * roughnessSquared), 1u);                                                                                                                                                   \n" +
                                          "                                                                                                                                                                                                                \n" +
                                          "    for(uint i = 0u; i < nSamples; ++i)                                                                                                                                                                         \n" +
@@ -374,7 +376,8 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "void main()                                                                                                                                                                                                     \n" +
                                      "{                                                                                                                                                                                                               \n" +
-                                     "    vec2 texCoords = texCoords * 4.0;                                                                                                                                                                           \n" +
+                                     "    const float texelSize = 1.0 / 512.0;                                                                                                                                                                        \n" +
+                                     "    vec2 texCoords = mix(vec2(0), vec2(1) + 4.0 * texelSize, fract(texCoords * 4.0));                                                                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    integration         = texelFetch(integralBuffer,    ivec2(gl_FragCoord), 0);                                                                                                                                \n" +
                                      "    resolvedRadiance    = texelFetch(radianceBuffer,    ivec2(gl_FragCoord), 0);                                                                                                                                \n" +
@@ -382,10 +385,10 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "                                                                                                                                                                                                                \n" +
                                      "    float mapID = (floor(gl_FragCoord.x / 128.0) + 4.0 * floor(gl_FragCoord.y / 128.0));                                                                                                                        \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    float roughness = (mapID / 15.0);                                                                                                                                                                           \n" +
+                                     "    float roughness = (mapID / 15.0) * float(int(mapID) != 1);                                                                                                                                                  \n" +
                                      "    float roughnessSquared = (roughness * roughness);                                                                                                                                                           \n" +
                                      "                                                                                                                                                                                                                \n" +
-                                     "    vec3 normal = uvToPolar(mod(texCoords, vec2(1.0)));                                                                                                                                                         \n" +
+                                     "    vec3 normal = uvToPolar(texCoords);                                                                                                                                                                         \n" +
                                      "                                                                                                                                                                                                                \n" +
                                      "    int sky_mip32_lod = max(int(textureLods(skyMap)) - 6, 0); // 32x32                                                                                                                                          \n" +
                                      "    uvec2 sky_mip32_size = uvec2(textureSize(skyMap, sky_mip32_lod));                                                                                                                                           \n" +
@@ -411,6 +414,8 @@ glEnvironmentMap.__genRadianceSolverProgram = function(ctx)
                                      "            if(weight > 0.0)                                                                                                                                                                                    \n" +
                                      "            {                                                                                                                                                                                                   \n" +
                                      "                vec4 radianceSample = textureSphereLod(environmentMap, V, lod);                                                                                                                                 \n" +
+                                     "                if(int(mapID) == 1) radianceSample = textureSphereLod(skyMap, V, 0.0);                                                                                                                          \n" +
+                                     "                                                                                                                                                                                                                \n" +
                                      "                integration += radianceSample * weight;                                                                                                                                                         \n" +                      
                                      "            }                                                                                                                                                                                                   \n" +
                                      "                                                                                                                                                                                                                \n" +
@@ -608,7 +613,7 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
     
         this.__radianceSamplesPerFrameUniform.set(nSamples);
         if(nSamples >= 1024) this.__radianceIntegralIterationID = 0;
-        
+/*        
         if(this.__onDrawCallback != null)
         {
             this.__skyMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
@@ -619,6 +624,9 @@ glEnvironmentMap.prototype.updateRadiance = function(nSamples)
             this.__environmentMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR); 
             this.__environmentMap.bind(0);
         }
+*/
+        this.__skyMap.setFilterMode(gl.LINEAR_MIPMAP_LINEAR, gl.LINEAR);
+        this.__skyMap.bind(0);
 
         this.__radianceIntegralPDF.bind(1);
 
@@ -705,5 +713,5 @@ glEnvironmentMap.prototype.toImage = function(width, height, onLoad) {
 }
 
 glEnvironmentMap.prototype.toBase64 = function(width, height) {
-    return this.__environmentMap.toImage(width, height);
+    return this.__environmentMap.toBase64(width, height);
 }

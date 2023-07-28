@@ -73,6 +73,7 @@ let glContext = function(canvasID)
 
     this.__extensions =  {
         shadersDebugger:          this.__gl.getExtension('WEBGL_debug_shaders'),
+        rendererDebugger:         this.__gl.getExtension('WEBGL_debug_renderer_info'),
         renderableTextureFloat:   this.__gl.getExtension("EXT_color_buffer_float"),
         blendableTextureFloat:    this.__gl.getExtension("EXT_float_blend"),
         textureFloatLinearFilter: this.__gl.getExtension("OES_texture_float_linear"),
@@ -326,7 +327,16 @@ let glContext = function(canvasID)
                                "                                                                                                                                                                  \n" +
                                "#endif                                                                                                                                                            \n");
 
-    this.__appendShadingHeader("struct samplerData                                                                                                                                                                                                                                                          " +
+    this.__appendShadingHeader("mediump float _randomSeed = 0.0;                      \n" +
+                               "void srand(in float seed) {                           \n" +
+                               "   _randomSeed = seed;                                \n" +
+                               "}                                                     \n" +
+                               "                                                      \n" +
+                               "float random() {                                      \n" +
+                               "    return fract(sin(++_randomSeed) * 43758.5453123); \n" +
+                               "}                                                     \n");
+
+    this.__appendShadingHeader("struct samplerData                                                                                                                                                                      \n" +
                                "{                                                                                                                                                                                       \n" +
                                "   highp sampler2D sampler;                                                                                                                                                             \n" +
                                "   lowp int unitID;                                                                                                                                                                     \n" +
@@ -353,7 +363,7 @@ let glContext = function(canvasID)
                                "highp int textureDataSize(in samplerData s) {                                                                                                                                           \n" +
                                "    return int(_glTextureDataDescriptors[s.unitID].x);                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n" +
-                               "                                                                                                                                                                                        \n" +  
+                               "                                                                                                                                                                                        \n" +
                                "void textureGeoData(in samplerData s, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent, out vec3 bitangent)                                     \n" +
                                "{                                                                                                                                                                                       \n" +
                                "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
@@ -398,7 +408,7 @@ let glContext = function(canvasID)
                                "void textureGeoData(in samplerData s, in int vertexID, out vec3 position)                                                                                                               \n" +
                                "{                                                                                                                                                                                       \n" +
                                "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
-                               "    position = accessor0.xyz;                                                                                                                                                           \n" +        
+                               "    position = accessor0.xyz;                                                                                                                                                           \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "#define textureGeoDataSize textureDataSize                                                                                                                                              \n" +
@@ -409,7 +419,7 @@ let glContext = function(canvasID)
                                "   return (1.0 + floor(log2(float(max(size.x, size.y)))));                                                                                                                              \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "mediump float textureQueryLod(in sampler2D s, in vec2 uv)                                                                                                                               \n" +             
+                               "mediump float textureQueryLod(in sampler2D s, in vec2 uv)                                                                                                                               \n" +
                                "{                                                                                                                                                                                       \n" +
                                "    #ifdef GLES_FRAGMENT_SHADER                                                                                                                                                         \n" +
                                "                                                                                                                                                                                        \n" +
@@ -449,12 +459,12 @@ let glContext = function(canvasID)
                                "   mediump float y = s.y - 4.0 * s.x;                                                                                                                                                   \n" +
                                "   mediump float z = s.z - 4.0 * s.y + 6.0 * s.x;                                                                                                                                       \n" +
                                "   mediump float w = 6.0 - x - y - z;                                                                                                                                                   \n" +
-                               "                                                                                                                                                                                        \n" +  
+                               "                                                                                                                                                                                        \n" +
                                "   mediump vec4 xcubic = vec4(x, y, z, w) * (1.0 / 6.0);                                                                                                                                \n" +
-                               "                                                                                                                                                                                        \n" +     
+                               "                                                                                                                                                                                        \n" +
                                "   n = vec4(1.0, 2.0, 3.0, 4.0) - fxy.y;                                                                                                                                                \n" +
                                "   s = n * n * n;                                                                                                                                                                       \n" +
-                               "                                                                                                                                                                                        \n" +  
+                               "                                                                                                                                                                                        \n" +
                                "   x = s.x;                                                                                                                                                                             \n" +
                                "   y = s.y - 4.0 * s.x;                                                                                                                                                                 \n" +
                                "   z = s.z - 4.0 * s.y + 6.0 * s.x;                                                                                                                                                     \n" +
@@ -535,10 +545,10 @@ let glContext = function(canvasID)
                                "    mediump float mipLevels = textureLods(environmentMap);                                                                                                                              \n" +
                                "    mediump float radianceLUT_mipID = mipLevels - 10.0; // 512x LOD                                                                                                                     \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    const mediump float texelSize = (0.25 / 128.0);                                                                                                                                     \n" +
+                               "    const mediump float texelSize = 1.0 / 512.0;                                                                                                                                        \n" +
                                "    mediump vec2 uv = vec2(atan(n.z, n.x) * 0.1591 + 0.5, asin(n.y) * 0.3183 + 0.5);                                                                                                    \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    mediump vec2 uv_lut = mix(vec2(0.0 + texelSize), vec2(0.25) - 0.5 * texelSize, uv);                                                                                                 \n" +
+                               "    mediump vec2 uv_lut = mix(vec2(0.0) + 0.5 * texelSize, vec2(0.25) - 0.5 * texelSize, uv);                                                                                           \n" +
                                "                                                                                                                                                                                        \n" +
                                "    mediump int mapID_base = int(floor(15.0 * roughness));                                                                                                                              \n" +
                                "    mediump int mapID_next = int(ceil(15.0 * roughness));                                                                                                                               \n" +
@@ -557,8 +567,16 @@ let glContext = function(canvasID)
                                "                                                                                                                                                                                        \n" +
                                "    mediump vec4 radiance = mix(base, next, mod(roughness * 15.0, 1.0));                                                                                                                \n" +
                                "    radiance = mix(textureLod(environmentMap, uv, radiance0_mipID), radiance, smoothstep(0.01, 0.0625, roughnessSquared));                                                              \n" +
+                               "    radiance.rgb = pow(radiance.rgb, vec3(1.0 / 2.24));                                                                                                                                 \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    return vec4(pow(radiance.rgb, vec3(1.0 / 2.24)), radiance.a);                                                                                                                       \n" +
+                               "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                             \n" +
+                               "    mediump float oldSeed = _randomSeed;                                                                                                                                                \n" +
+                               "    srand(glTime * sin(glTime) + (gl_FragCoord.x + 4096.0 * gl_FragCoord.y) / 4096.0);                                                                                                  \n" +
+                               "    radiance.rgb = max(radiance.rgb + (1.0 / 255.0) * (-1.0 + 2.0 * random()), vec3(0)); // removes banding artifacts via dithering                                                     \n" +
+                               "    _randomSeed = oldSeed;                                                                                                                                                              \n" +
+                               "#endif                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return radiance;                                                                                                                                                                    \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "mediump vec4 textureEnvIrradiance(in sampler2D environmentMap, in vec3 n)                                                                                                               \n" +
@@ -566,14 +584,44 @@ let glContext = function(canvasID)
                                "    mediump float mipLevels = textureLods(environmentMap);                                                                                                                              \n" +
                                "    mediump float radianceLUT_mipID = mipLevels - 10.0; // 512x LOD                                                                                                                     \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    const mediump float texelSize = (0.25 / 128.0);                                                                                                                                     \n" +
+                               "    const mediump float texelSize = 1.0 / 512.0;                                                                                                                                        \n" +
                                "    mediump vec2 uv = vec2(atan(n.z, n.x) * 0.1591 + 0.5, asin(n.y) * 0.3183 + 0.5);                                                                                                    \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    mediump vec2 uv_lut = mix(vec2(0.0 + texelSize), vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.75);                                                                                    \n" +
+                               "    mediump vec2 uv_lut = mix(vec2(0.0) + 0.5 * texelSize, vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.75);                                                                              \n" +
                                "    mediump vec4 irradiance = textureLod(environmentMap, uv_lut, radianceLUT_mipID);                                                                                                    \n" +
+                               "    irradiance.rgb = pow(irradiance.rgb, vec3(1.0 / 2.24));                                                                                                                             \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    return vec4(pow(irradiance.rgb, vec3(1.0 / 2.24)), irradiance.a);                                                                                                                   \n" +
+                               "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                             \n" +
+                               "    mediump float oldSeed = _randomSeed;                                                                                                                                                \n" +
+                               "    srand(glTime * sin(glTime) + (gl_FragCoord.x + 4096.0 * gl_FragCoord.y) / 4096.0);                                                                                                  \n" +
+                               "    irradiance.rgb = max(irradiance.rgb + (1.0 / 255.0) * (-1.0 + 2.0 * random()), vec3(0)); // removes banding artifacts via dithering                                                 \n" +
+                               "    _randomSeed = oldSeed;                                                                                                                                                              \n" +
+                               "#endif                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return irradiance;                                                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "mediump vec3 textureEnvFogColor(in sampler2D environmentMap, in vec3 eyeVector)                                                                                                         \n" + 
+                               "{                                                                                                                                                                                       \n" + 
+                               "    mediump float mipLevels = textureLods(environmentMap);                                                                                                                              \n" + 
+                               "    mediump float radianceLUT_mipID = mipLevels - 10.0; // 512x LOD                                                                                                                     \n" + 
+                               "                                                                                                                                                                                        \n" + 
+                               "    const mediump float texelSize = 1.0 / 512.0;                                                                                                                                        \n" + 
+                               "    mediump vec2 uv = vec2(atan(eyeVector.z, eyeVector.x) * 0.1591 + 0.5, asin(eyeVector.y) * 0.3183 + 0.5);                                                                            \n" + 
+                               "                                                                                                                                                                                        \n" + 
+                               "    mediump vec2 uv_lut = mix(vec2(0.0) + 0.5 * texelSize, vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.25, 0.0);                                                                         \n" + 
+                               "    mediump vec4 fog = textureLod(environmentMap, uv_lut, radianceLUT_mipID);                                                                                                           \n" + 
+                               "    fog.rgb = pow(fog.rgb, vec3(1.0 / 2.24));                                                                                                                                           \n" +
+                               "                                                                                                                                                                                        \n" + 
+                               "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                             \n" +
+                               "    mediump float oldSeed = _randomSeed;                                                                                                                                                \n" +
+                               "    srand(glTime * sin(glTime) + (gl_FragCoord.x + 4096.0 * gl_FragCoord.y) / 4096.0);                                                                                                  \n" +
+                               "    fog.rgb = max(fog.rgb + (1.0 / 255.0) * (-1.0 + 2.0 * random()), vec3(0)); // removes banding artifacts via dithering                                                               \n" +
+                               "    _randomSeed = oldSeed;                                                                                                                                                              \n" +
+                               "#endif                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return fog.rgb;                                                                                                                                                                     \n" + 
+                               "}                                                                                                                                                                                       \n" + 
                                "                                                                                                                                                                                        \n" +
                                "mediump vec3 textureEnvLightVector(in sampler2D environmentMap)                                                                                                                         \n" +
                                "{                                                                                                                                                                                       \n" +
@@ -1122,6 +1170,10 @@ glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, 
     return environmentMap;
 }
 
+glContext.prototype.getGraphicsCardModelName = function() {
+    return this.getGL().getParameter(this.__extensions.rendererDebugger.UNMASKED_RENDERER_WEBGL);
+}
+
 glContext.prototype.getTextureMaxAnisotropy = function()
 {
     if(this.__maxAnisotropyLevel == null && this.__extensions.anisotropicFilter != null) 
@@ -1229,6 +1281,8 @@ glContext.prototype.run = function()
             
             if(self.__onFrameUpdateCallback != null) self.__onFrameUpdateCallback(gl, dt, self.__timeElapsed);
             
+            glAudioPlayer.__update(dt);
+
             let shouldCaptureWithAlphaChannel    = (self.__streamCapturing &&  self.__streamCaptureWithAlpha);
             let shouldCaptureWithoutAlphaChannel = (self.__streamCapturing && !self.__streamCaptureWithAlpha);
 

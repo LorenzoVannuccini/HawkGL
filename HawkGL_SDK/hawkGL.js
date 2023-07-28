@@ -95,6 +95,9 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("gl/glFramebuffer.js");
     includeScriptSDK("gl/glEnvironmentMap.js");
     includeScriptSDK("gl/glDepthTracingTexture.js");
+    includeScriptSDK("gl/glSkyMap.js");
+    includeScriptSDK("gl/glSkyMapResources.js");
     includeScriptSDK("gl/glTriangleSelector.js");
+    includeScriptSDK("gl/glAudioPlayer.js");
     
 })();
