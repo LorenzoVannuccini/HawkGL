@@ -284,6 +284,73 @@ glMesh.createSphere = function(ctx, radius, nSlices, nStacks)
     return sphere;
 }
 
+glMesh.createGeosphere = function(ctx, radius, depth)
+{
+    let sphere = new glMesh(ctx);
+    
+    // Helper function to find the middle point of two vertices and normalize it
+    function getMiddlePoint(p1, p2, vertices) 
+    {
+        let middle = [
+            (vertices[p1][0] + vertices[p2][0]) / 2.0,
+            (vertices[p1][1] + vertices[p2][1]) / 2.0,
+            (vertices[p1][2] + vertices[p2][2]) / 2.0,
+        ];
+
+        let len = Math.sqrt(middle[0] * middle[0] + middle[1] * middle[1] + middle[2] * middle[2]);
+        middle = [middle[0] / len, middle[1] / len, middle[2] / len];
+        
+        vertices.push(middle);
+        return vertices.length - 1;
+    }
+
+    // Define icosahedron vertices
+    const X = 0.525731112119133606;
+    const Z = 0.850650808352039932;
+    let icosahedronVertices = [
+        [-X, 0.0, Z], [X, 0.0, Z], [-X, 0.0, -Z], [X, 0.0, -Z],
+        [0.0, Z, X], [0.0, Z, -X], [0.0, -Z, X], [0.0, -Z, -X],
+        [Z, X, 0.0], [-Z, X, 0.0], [Z, -X, 0.0], [-Z, -X, 0.0]
+    ];
+
+    // Define icosahedron triangles
+    let indices = [
+        [0, 4, 1], [0, 9, 4], [9, 5, 4], [4, 5, 8], [4, 8, 1],
+        [8, 10, 1], [8, 3, 10], [5, 3, 8], [5, 2, 3], [2, 7, 3],
+        [7, 10, 3], [7, 6, 10], [7, 11, 6], [11, 0, 6], [0, 1, 6],
+        [6, 1, 10], [9, 0, 11], [9, 11, 2], [9, 2, 5], [7, 2, 11]
+    ];
+
+    // Subdivide the icosahedron
+    for (let i = 0; i < depth; i++) 
+    {
+        let newIndices = [];
+        indices.forEach(tri => {
+            let a = getMiddlePoint(tri[0], tri[1], icosahedronVertices);
+            let b = getMiddlePoint(tri[1], tri[2], icosahedronVertices);
+            let c = getMiddlePoint(tri[2], tri[0], icosahedronVertices);
+            
+            newIndices.push([tri[0], a, c]);
+            newIndices.push([tri[1], b, a]);
+            newIndices.push([tri[2], c, b]);
+            newIndices.push([a, b, c]);
+        });
+        indices = newIndices;
+    }
+
+    // Create vertices
+    let vertices = icosahedronVertices.map(v => {
+        let p = glVector3f.normalize(v[0], v[1], v[2]);
+        return new glVertex(p.x * radius, p.y * radius, p.z * radius); // @TODO: texture coords
+    });
+
+    indices.forEach(tri => {
+        sphere.add([vertices[tri[2]], vertices[tri[1]], vertices[tri[0]]]);
+    });
+    
+    return sphere;
+}
+
 glMesh.prototype.toOBJ = function()
 {
     let vertexBuffers = this.__buildVertexBuffers();
@@ -305,4 +372,14 @@ glMesh.prototype.toOBJ = function()
     } 
 
     return objFileData;
+}
+
+glMesh.prototype.toBVH = function()
+{
+    let bvh = new glBVH(this.__ctx);
+
+    bvh.__mesh = this; // prevents mesh duplication (bvh mesh is dereferenced after build())
+    bvh.build();
+
+    return bvh;
 }

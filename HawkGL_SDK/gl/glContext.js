@@ -72,13 +72,18 @@ let glContext = function(canvasID)
     this.__activeTextures = [];
 
     this.__extensions =  {
-        shadersDebugger:          this.__gl.getExtension('WEBGL_debug_shaders'),
-        rendererDebugger:         this.__gl.getExtension('WEBGL_debug_renderer_info'),
+        shadersDebugger:          this.__gl.getExtension("WEBGL_debug_shaders"),
+        rendererDebugger:         this.__gl.getExtension("WEBGL_debug_renderer_info"),
+        disjointTimerQuery:       this.__gl.getExtension("EXT_disjoint_timer_query_webgl2"),
         renderableTextureFloat:   this.__gl.getExtension("EXT_color_buffer_float"),
         blendableTextureFloat:    this.__gl.getExtension("EXT_float_blend"),
         textureFloatLinearFilter: this.__gl.getExtension("OES_texture_float_linear"),
-        anisotropicFilter:        this.__gl.getExtension("EXT_texture_filter_anisotropic")
+        anisotropicFilter:        this.__gl.getExtension("EXT_texture_filter_anisotropic"),
+        minMaxMipmap:             this.__gl.getExtension("GL_EXT_texture_filter_minmax"),
     };
+    
+    this.__prfProfiler = new glPerformanceProfiler(this);
+    this.__prfProfiler.enable(false);
     
     this.__shadingGlobalConstants = "";
     this.__shadingGlobalConstantsLineCount = 0;
@@ -111,12 +116,27 @@ let glContext = function(canvasID)
     if(!this.__standardUniformsBlock.empty())  this.__appendShadingHeader(this.__standardUniformsBlock.getShaderSource());
     if(!this.__animationUniformsBlock.empty()) this.__appendShadingHeader(this.__animationUniformsBlock.getShaderSource());
 
-    this.__appendShadingHeader("precision highp int;                                                                                                                                              \n" +
+    this.__appendShadingHeader("#ifdef GLES_VERTEX_SHADER                                                                                                                                         \n" +
                                "precision highp float;                                                                                                                                            \n" +
-                               "                                                                                                                                                                  \n" +  
-                               "#define signbit(x) (step(0.0, x) * 2.0 - 1.0)                                                                                                                     \n" +  
-                               "#define normalize(v) ((dot(v, v) > 0.0) ? normalize(v) : v) // Prevents singularities. Inefficient, but can be used as const express.                             \n" +  
-                               "                                                                                                                                                                  \n" +  
+                               "precision highp int;                                                                                                                                              \n" +
+                               "#elif GLES_FRAGMENT_SHADER                                                                                                                                        \n" +
+                               "precision mediump float;                                                                                                                                          \n" +
+                               "precision highp int;                                                                                                                                              \n" +
+                               "#elif GLES_COMPUTE_SHADER                                                                                                                                         \n" +
+                               "precision highp float;                                                                                                                                            \n" +
+                               "precision highp int;                                                                                                                                              \n" +
+                               "#endif                                                                                                                                                            \n" +
+                               "                                                                                                                                                                  \n" +
+                               "#define signbit(x) (step(0.0, x) * 2.0 - 1.0)                                                                                                                     \n" +
+                               "                                                                                                                                                                  \n" +
+                               "const float NaN = uintBitsToFloat(0x7FC00000u);                                                                                                                   \n" +
+                               "const float Infinity = uintBitsToFloat(0x7F800000u);                                                                                                              \n" +
+                               "                                                                                                                                                                  \n" +
+                               "#define uintBitsToFloat(v) uintBitsToFloat(v+uint(mod(glTime,1e-6))) // Hardware Bug Workaround: on some GPUs uintBitsToFloat() behaves inconsistently            \n" +
+                               "                                                                     // due to internal optimizations. This workaround tricks the glsl compiler into thinking     \n" +
+                               "                                                                     // input parameters to this function are uniform-dependent, which bypasses the issue.        \n" +
+                               "                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                  \n" +
                                "#ifdef GLES_VERTEX_SHADER                                                                                                                                         \n" +
                                "                                                                                                                                                                  \n" +
                                "in highp   vec3  glVertex;                                                                                                                                        \n" +
@@ -126,7 +146,7 @@ let glContext = function(canvasID)
                                "in mediump vec4  glBonesWeights;                                                                                                                                  \n" +
                                "in lowp    uvec4 glBonesIndices;                                                                                                                                  \n" +
                                "in lowp    uint  glAnimationMatrixID;                                                                                                                             \n" +
-                               "                                                                                                                                                                  \n" +  
+                               "                                                                                                                                                                  \n" +
                                "#define glTangent   vec3(_glTangent.xyz)                                                                                                                          \n" +
                                "#define glBitangent vec3(cross(glNormal, _glTangent.xyz) * sign(_glTangent.w))                                                                                    \n" +
                                "                                                                                                                                                                  \n" +
@@ -364,54 +384,419 @@ let glContext = function(canvasID)
                                "    return int(_glTextureDataDescriptors[s.unitID].x);                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "void textureGeoData(in samplerData s, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent, out vec3 bitangent)                                     \n" +
+                               "struct samplerGeoData                                                                                                                                                                   \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
-                               "    highp vec4 accessor1 = textureData(s, vertexID, 1);                                                                                                                                 \n" +
-                               "    highp vec4 accessor2 = textureData(s, vertexID, 2);                                                                                                                                 \n" +
+                               "   highp sampler2D vertexSampler;                                                                                                                                                       \n" +
+                               "   highp sampler2D attribSampler;                                                                                                                                                       \n" +
+                               "   highp sampler2D faceSampler;                                                                                                                                                         \n" +
+                               "   highp sampler2D nodeSampler;                                                                                                                                                         \n" +
+                               "};                                                                                                                                                                                      \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    position  = accessor0.xyz;                                                                                                                                                          \n" +
-                               "    normal    = accessor1.xyz;                                                                                                                                                          \n" +
-                               "    tangent   = accessor2.xyz;                                                                                                                                                          \n" +
-                               "    bitangent = cross(normal, tangent) * accessor2.w;                                                                                                                                   \n" +
-                               "    texCoord  = vec2(accessor0.w, accessor1.w);                                                                                                                                         \n" +
+                               " // Fetches vertex properties (position, uv, normal, tangent and bitangent) from a geodata texture's VBO (indexed mode)                                                                 \n" +
+                               " void textureGeoDataVBO(in samplerGeoData g, in uint vID, out vec3 p, out vec2 uv, out vec3 n, out vec3 t, out vec3 b)                                                                  \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     uvec2 w = uvec2(textureSize(g.vertexSampler, 0).x, textureSize(g.attribSampler, 0).x);                                                                                             \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     vec4 data0 = texelFetch(g.vertexSampler, ivec2(vID % w.x, vID / w.x), 0);                                                                                                          \n" +
+                               "     vec4 data1 = texelFetch(g.attribSampler, ivec2(vID % w.y, vID / w.y), 0);                                                                                                          \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     p  = data0.xyz;                                                                                                                                                                    \n" +
+                               "     uv = vec2(data1.xy);                                                                                                                                                               \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     t = vec3(-1.0 + 2.0 * unpackHalf2x16(floatBitsToUint(data1.z)), 0);                                                                                                                \n" +
+                               "     b = vec3(-1.0 + 2.0 * unpackHalf2x16(floatBitsToUint(data1.w)), 0);                                                                                                                \n" +
+                               "     n = vec3(-1.0 + 2.0 * unpackHalf2x16(floatBitsToUint(data0.w)), 0);                                                                                                                \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     if((t.z = 1.0 - abs(t.x) - abs(t.y)) < 0.0) t.xy = (1.0 - abs(t.yx)) * vec2(((t.x >= 0.0) ? 1.0 : -1.0), ((t.y >= 0.0) ? 1.0 : -1.0));                                             \n" +
+                               "     if((b.z = 1.0 - abs(b.x) - abs(b.y)) < 0.0) b.xy = (1.0 - abs(b.yx)) * vec2(((b.x >= 0.0) ? 1.0 : -1.0), ((b.y >= 0.0) ? 1.0 : -1.0));                                             \n" +
+                               "     if((n.z = 1.0 - abs(n.x) - abs(n.y)) < 0.0) n.xy = (1.0 - abs(n.yx)) * vec2(((n.x >= 0.0) ? 1.0 : -1.0), ((n.y >= 0.0) ? 1.0 : -1.0));                                             \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position, uv, normal, tangent and bitangent) from a geodata texture (non-indexed mode)                                                                   \n" +
+                               " void textureGeoData(in samplerGeoData g, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent, out vec3 bitangent)                                 \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     uint triangleID = uint(vertexID) / 3u;                                                                                                                                             \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     uint w = uint(textureSize(g.faceSampler, 0).x);                                                                                                                                    \n" +
+                               "     uint vID = floatBitsToUint(texelFetch(g.faceSampler, ivec2(triangleID % w, triangleID / w), 0)[vertexID % 3]);                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     textureGeoDataVBO(g, vID, position, texCoord, normal, tangent, bitangent);                                                                                                         \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position, uv, normal and tangent) from a geodata texture                                                                                                 \n" +
+                               " void textureGeoData(in samplerGeoData g, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent)                                                     \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 b;                                                                                                                                                                            \n" +
+                               "     textureGeoData(g, vertexID, position, texCoord, normal, tangent, b);                                                                                                               \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position, uv and normal) from a geodata texture                                                                                                          \n" +
+                               " void textureGeoData(in samplerGeoData g, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal)                                                                       \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 t, b;                                                                                                                                                                         \n" +
+                               "     textureGeoData(g, vertexID, position, texCoord, normal, t, b);                                                                                                                     \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position and uv) from a geodata texture                                                                                                                  \n" +
+                               " void textureGeoData(in samplerGeoData g, in int vertexID, out vec3 position, out vec2 texCoord)                                                                                        \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 n, t, b;                                                                                                                                                                      \n" +
+                               "     textureGeoData(g, vertexID, position, texCoord, n, t, b);                                                                                                                          \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position) from a geodata texture                                                                                                                         \n" +
+                               " void textureGeoData(in samplerGeoData g, in int vertexID, out vec3 position)                                                                                                           \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec2 uv; vec3 n, t, b;                                                                                                                                                             \n" +
+                               "     textureGeoData(g, vertexID, position, uv, n, t, b);                                                                                                                                \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches vertex properties (position, uv, normal, tangent and bitangent) of a triangle from a geodata texture                                                                        \n" +
+                               " uint textureGeoData(in samplerGeoData g, in uint triangleID, out vec3 p[3], out vec2 uv[3], out vec3 n[3], out vec3 t[3], out vec3 b[3])                                               \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     uint w = uint(textureSize(g.faceSampler, 0).x);                                                                                                                                    \n" +
+                               "     uvec4 vIDs = floatBitsToUint(texelFetch(g.faceSampler, ivec2(triangleID % w, triangleID / w), 0));                                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     textureGeoDataVBO(g, vIDs.x, p[0], uv[0], n[0], t[0], b[0]);                                                                                                                       \n" +
+                               "     textureGeoDataVBO(g, vIDs.y, p[1], uv[1], n[1], t[1], b[1]);                                                                                                                       \n" +
+                               "     textureGeoDataVBO(g, vIDs.z, p[2], uv[2], n[2], t[2], b[2]);                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return vIDs.w; // triangle's materialID                                                                                                                                            \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " // Fetches interpolated vertex properties (position, uv, normal, tangent and bitangent) of a triangle from a geodata texture                                                           \n" +
+                               " uint textureGeoData(in samplerGeoData g, in uint triangleID, in vec2 barycentric, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent, out vec3 bitangent)         \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 w = vec3(1.0 - barycentric.x - barycentric.y, barycentric.xy);                                                                                                                \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     vec3 p[3], n[3], t[3], b[3]; vec2 u[3];                                                                                                                                            \n" +
+                               "     uint materialID = textureGeoData(g, triangleID, p, u, n, t, b);                                                                                                                    \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     position  = p[0] * w.x + p[1] * w.y + p[2] * w.z;                                                                                                                                  \n" +
+                               "     texCoord  = u[0] * w.x + u[1] * w.y + u[2] * w.z;                                                                                                                                  \n" +
+                               "     tangent   = t[0] * w.x + t[1] * w.y + t[2] * w.z;                                                                                                                                  \n" +
+                               "     bitangent = b[0] * w.x + b[1] * w.y + b[2] * w.z;                                                                                                                                  \n" +
+                               "     normal    = n[0] * w.x + n[1] * w.y + n[2] * w.z;                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     bitangent = normalize(bitangent);                                                                                                                                                  \n" +
+                               "     tangent   = normalize(tangent);                                                                                                                                                    \n" +
+                               "     normal    = normalize(normal);                                                                                                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return materialID;                                                                                                                                                                 \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " const uint _BVH_max_depth = 32u;                                                                                                                                                       \n" +
+                               " uint  _BVH_stack[_BVH_max_depth];                                                                                                                                                      \n" +
+                               " uint  _BVH_stackPointer = 1u;                                                                                                                                                          \n" +
+                               " float _BVH_polygonOffset = 1e-6;                                                                                                                                                       \n" +
+                               " bool  _BVH_async_mode = false;                                                                                                                                                         \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " vec2 _BVH_rayIntersectAABB(const vec3 ro, const vec3 rd_inv, const vec3 aabbMin, const vec3 aabbMax)                                                                                   \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 t1 = (aabbMin - ro) * rd_inv;                                                                                                                                                 \n" +
+                               "     vec3 t2 = (aabbMax - ro) * rd_inv;                                                                                                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     vec3 tn = min(t1, t2);                                                                                                                                                             \n" +
+                               "     vec3 tf = max(t1, t2);                                                                                                                                                             \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     float tmin = max(max(tn.x, tn.y), tn.z);                                                                                                                                           \n" +
+                               "     float tmax = min(min(tf.x, tf.y), tf.z);                                                                                                                                           \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return vec2(tmin, tmax);                                                                                                                                                           \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "float _BVH_signedDistanceAABB(vec3 p, vec3 aabbMin, vec3 aabbMax)                                                                                                                       \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "    vec3 d = abs(p - (aabbMax + aabbMin) * 0.5) - (aabbMax - aabbMin) * 0.5;                                                                                                            \n" +
+                               "    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);                                                                                                                     \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "void textureGeoData(in samplerData s, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal, out vec3 tangent)                                                         \n" +
-                               "{                                                                                                                                                                                       \n" +
-                               "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
-                               "    highp vec4 accessor1 = textureData(s, vertexID, 1);                                                                                                                                 \n" +
-                               "    highp vec4 accessor2 = textureData(s, vertexID, 2);                                                                                                                                 \n" +
-                               "                                                                                                                                                                                        \n" +
-                               "    position = accessor0.xyz;                                                                                                                                                           \n" +
-                               "    normal   = accessor1.xyz;                                                                                                                                                           \n" +
-                               "    tangent  = accessor2.xyz;                                                                                                                                                           \n" +
-                               "    texCoord = vec2(accessor0.w, accessor1.w);                                                                                                                                          \n" +
+                               "float _BVH_dot2(const vec3 v) {                                                                                                                                                         \n" +
+                               "    return dot(v, v);                                                                                                                                                                   \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "void textureGeoData(in samplerData s, in int vertexID, out vec3 position, out vec2 texCoord, out vec3 normal)                                                                           \n" +
+                               "float _BVH_signedDistanceTriangle(const mat3 triangle, in vec3 p)                                                                                                                       \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
-                               "    highp vec4 accessor1 = textureData(s, vertexID, 1);                                                                                                                                 \n" +
+                               "    vec3 v21 = triangle[1] - triangle[0];                                                                                                                                               \n" +
+                               "    vec3 v32 = triangle[2] - triangle[1];                                                                                                                                               \n" +
+                               "    vec3 v13 = triangle[0] - triangle[2];                                                                                                                                               \n" +
                                "                                                                                                                                                                                        \n" +
-                               "    position = accessor0.xyz;                                                                                                                                                           \n" +
-                               "    normal   = accessor1.xyz;                                                                                                                                                           \n" +
-                               "    texCoord = vec2(accessor0.w, accessor1.w);                                                                                                                                          \n" +
+                               "    vec3 n = normalize(cross(v21, v13));                                                                                                                                                \n" +
+                               "    p += n * _BVH_polygonOffset;                                                                                                                                                        \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    vec3 p1 = p - triangle[0];                                                                                                                                                          \n" +
+                               "    vec3 p2 = p - triangle[1];                                                                                                                                                          \n" +
+                               "    vec3 p3 = p - triangle[2];                                                                                                                                                          \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    float s = sign(dot(-n, p1));                                                                                                                                                        \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return sqrt( abs((sign(dot(cross(v21,n),p1)) +                                                                                                                                      \n" +
+                               "                  sign(dot(cross(v32,n),p2)) +                                                                                                                                          \n" +
+                               "                  sign(dot(cross(v13,n),p3))<2.0)                                                                                                                                       \n" +
+                               "                  ?                                                                                                                                                                     \n" +
+                               "                  min( min(                                                                                                                                                             \n" +
+                               "                  _BVH_dot2(v21*clamp(dot(v21,p1)/_BVH_dot2(v21),0.0,1.0)-p1),                                                                                                          \n" +
+                               "                  _BVH_dot2(v32*clamp(dot(v32,p2)/_BVH_dot2(v32),0.0,1.0)-p2) ),                                                                                                        \n" +
+                               "                  _BVH_dot2(v13*clamp(dot(v13,p3)/_BVH_dot2(v13),0.0,1.0)-p3) )                                                                                                         \n" +
+                               "                  :                                                                                                                                                                     \n" +
+                               "                  dot(n,p1)*dot(n,p1)/_BVH_dot2(n))) * s;                                                                                                                               \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "void textureGeoData(in samplerData s, in int vertexID, out vec3 position, out vec2 texCoord)                                                                                            \n" +
+                               " vec3 _BVH_rayIntersectTriangle(const vec3 ro, const vec3 rd, const mat3 triangle)                                                                                                      \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 v1v0 = (triangle[1] - triangle[0]);                                                                                                                                           \n" +
+                               "     vec3 v2v0 = (triangle[2] - triangle[0]);                                                                                                                                           \n" +
+                               "     vec3 rov0 = (ro - triangle[0]);                                                                                                                                                    \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     vec3 n = cross(v1v0, v2v0);                                                                                                                                                        \n" +
+                               "     vec3 q = cross(rov0, rd);                                                                                                                                                          \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     float d = dot(rd, n);                                                                                                                                                              \n" +
+                               "     // if(d >= 0.0) return vec3(0, 0, -1); // back-face culling                                                                                                                        \n" +
+                               "     d = 1.0 / d;                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     float u = -d * dot(q, v2v0);                                                                                                                                                       \n" +
+                               "     float v =  d * dot(q, v1v0);                                                                                                                                                       \n" +
+                               "     float t = -d * dot(n, rov0);                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     if(t < 0.0 || u < 0.0 || v < 0.0 || (u + v) > 1.0) return vec3(0, 0, -1);                                                                                                          \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return vec3(u, v, t);                                                                                                                                                              \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " bool textureGeoDataRayTrace( in samplerGeoData g,                                                                                                                                      \n" +
+                               "                              const vec3 ro,                                                                                                                                            \n" +
+                               "                              const vec3 rd,                                                                                                                                            \n" +
+                               "                              inout vec3 hit,                                                                                                                                           \n" +
+                               "                              inout uint triangleID,                                                                                                                                    \n" +
+                               "                              const uint maxIterations )                                                                                                                                \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    highp vec3 normal;                                                                                                                                                                  \n" +
-                               "    textureGeoData(s, vertexID, position, texCoord, normal);                                                                                                                            \n" +
+                               "     float rz = hit.z;                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     if(!_BVH_async_mode)                                                                                                                                                               \n" +
+                               "     {                                                                                                                                                                                  \n" +
+                               "         _BVH_stack[0] = 0u,                                                                                                                                                            \n" +
+                               "         _BVH_stackPointer = 1u;                                                                                                                                                        \n" +
+                               "     }                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     vec3 rd_inv = 1.0 / (max(abs(rd), 1e-6) * signbit(rd));                                                                                                                            \n" +
+                               "     uvec3 w = uvec3(textureSize(g.nodeSampler, 0).x, textureSize(g.vertexSampler, 0).x, textureSize(g.faceSampler, 0).x);                                                              \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     for(uint i = 0u; (i < maxIterations && _BVH_stackPointer > 0u && _BVH_stackPointer < _BVH_max_depth); ++i)                                                                         \n" +
+                               "     {                                                                                                                                                                                  \n" +
+                               "         uint nodeID = _BVH_stack[--_BVH_stackPointer];                                                                                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         uvec2 texelIDs = nodeID * 2u + uvec2(0u, 1u);                                                                                                                                  \n" +
+                               "         vec4 nodeData0 = texelFetch(g.nodeSampler, ivec2(texelIDs.x % w.x, texelIDs.x / w.x), 0);                                                                                      \n" +
+                               "         vec4 nodeData1 = texelFetch(g.nodeSampler, ivec2(texelIDs.y % w.x, texelIDs.y / w.x), 0);                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         vec3 aabbMin = nodeData0.xyz;                                                                                                                                                  \n" +
+                               "         vec3 aabbMax = nodeData1.xyz;                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         vec2 d = _BVH_rayIntersectAABB(ro, rd_inv, aabbMin, aabbMax);                                                                                                                  \n" +
+                               "         if(d.y < 0.0 || d.y < d.x || (hit.z >= 0.0 && d.x >= hit.z)) continue;                                                                                                         \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         uint left  = floatBitsToUint(nodeData0.w);                                                                                                                                     \n" +
+                               "         uint right = floatBitsToUint(nodeData1.w);                                                                                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         bool isLeaf = (left == 0u);                                                                                                                                                    \n" +
+                               "         left -= 1u;                                                                                                                                                                    \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "         if(isLeaf) // leaf                                                                                                                                                             \n" +
+                               "         {                                                                                                                                                                              \n" +
+                               "             uvec3 vIDs = floatBitsToUint(texelFetch(g.faceSampler, ivec2(right % w.z, right / w.z), 0).xyz);                                                                           \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "             mat3 triangle = mat3(texelFetch(g.vertexSampler, ivec2(vIDs.x % w.y, vIDs.x / w.y), 0).xyz,                                                                                \n" +
+                               "                                  texelFetch(g.vertexSampler, ivec2(vIDs.y % w.y, vIDs.y / w.y), 0).xyz,                                                                                \n" +
+                               "                                  texelFetch(g.vertexSampler, ivec2(vIDs.z % w.y, vIDs.z / w.y), 0).xyz);                                                                               \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "             vec3 new_hit = _BVH_rayIntersectTriangle(ro, rd, triangle);                                                                                                                \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "             if(new_hit.z > _BVH_polygonOffset && (hit.z < 0.0 || new_hit.z < hit.z))                                                                                                   \n" +
+                               "             {                                                                                                                                                                          \n" +
+                               "                 triangleID = right;                                                                                                                                                    \n" +
+                               "                 hit = new_hit;                                                                                                                                                         \n" +
+                               "             }                                                                                                                                                                          \n" +
+                               "         }                                                                                                                                                                              \n" +
+                               "         else // branch                                                                                                                                                                 \n" +
+                               "         {                                                                                                                                                                              \n" +
+                               "             // add children to the _BVH_stack                                                                                                                                          \n" +
+                               "             _BVH_stack[_BVH_stackPointer++] = left;                                                                                                                                    \n" +
+                               "             _BVH_stack[_BVH_stackPointer++] = right;                                                                                                                                   \n" +
+                               "         }                                                                                                                                                                              \n" +
+                               "     }                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return (_BVH_stackPointer < 1u && hit.z >= 0.0 && (rz < 0.0 || hit.z < rz));                                                                                                       \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               " bool textureGeoDataRayTrace( in samplerGeoData g,                                                                                                                                      \n" +
+                               "                              const vec3  ro,                                                                                                                                           \n" +
+                               "                              const vec3  rd,                                                                                                                                           \n" +
+                               "                              inout float rz,                                                                                                                                           \n" +
+                               "                              inout vec3  p,                                                                                                                                            \n" +
+                               "                              inout vec2  uv,                                                                                                                                           \n" +
+                               "                              inout vec3  n,                                                                                                                                            \n" +
+                               "                              inout vec3  t,                                                                                                                                            \n" +
+                               "                              inout vec3  b,                                                                                                                                            \n" +
+                               "                              const uint  maxIterations )                                                                                                                               \n" +
+                               " {                                                                                                                                                                                      \n" +
+                               "     vec3 hit = vec3(0, 0, rz); uint triID;                                                                                                                                             \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     if(!textureGeoDataRayTrace(g, ro, rd, hit, triID, maxIterations)) return false;                                                                                                    \n" +
+                               "     textureGeoData(g, triID, hit.xy, p, uv, n, t, b); rz = hit.z;                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "     return true;                                                                                                                                                                       \n" +
+                               " }                                                                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "bool textureGeoDataRayTrace(in samplerGeoData g, const vec3 ro, const vec3 rd, const uint maxIterations)                                                                                \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "     if(!_BVH_async_mode)                                                                                                                                                               \n" +
+                               "     {                                                                                                                                                                                  \n" +
+                               "         _BVH_stack[0] = 0u,                                                                                                                                                            \n" +
+                               "         _BVH_stackPointer = 1u;                                                                                                                                                        \n" +
+                               "     }                                                                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    vec3 rd_inv = 1.0 / (max(abs(rd), 1e-6) * signbit(rd));                                                                                                                             \n" +
+                               "    uvec3 w = uvec3(textureSize(g.nodeSampler, 0).x, textureSize(g.vertexSampler, 0).x, textureSize(g.faceSampler, 0).x);                                                               \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    for(uint i = 0u; (i < maxIterations && _BVH_stackPointer > 0u && _BVH_stackPointer < _BVH_max_depth); ++i)                                                                          \n" +
+                               "    {                                                                                                                                                                                   \n" +
+                               "        uint nodeID = _BVH_stack[--_BVH_stackPointer];                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        uvec2 texelIDs = nodeID * 2u + uvec2(0u, 1u);                                                                                                                                   \n" +
+                               "        vec4 nodeData0 = texelFetch(g.nodeSampler, ivec2(texelIDs.x % w.x, texelIDs.x / w.x), 0);                                                                                       \n" +
+                               "        vec4 nodeData1 = texelFetch(g.nodeSampler, ivec2(texelIDs.y % w.x, texelIDs.y / w.x), 0);                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        vec3 aabbMin = nodeData0.xyz;                                                                                                                                                   \n" +
+                               "        vec3 aabbMax = nodeData1.xyz;                                                                                                                                                   \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        vec2 d = _BVH_rayIntersectAABB(ro, rd_inv, aabbMin, aabbMax);                                                                                                                   \n" +
+                               "        if(d.y < 0.0 || d.y < d.x) continue;                                                                                                                                            \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        uint left  = floatBitsToUint(nodeData0.w);                                                                                                                                      \n" +
+                               "        uint right = floatBitsToUint(nodeData1.w);                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        bool isLeaf = (left == 0u);                                                                                                                                                     \n" +
+                               "        left -= 1u;                                                                                                                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        if(isLeaf) // leaf                                                                                                                                                              \n" +
+                               "        {                                                                                                                                                                               \n" +
+                               "            uvec3 vIDs = floatBitsToUint(texelFetch(g.faceSampler, ivec2(right % w.z, right / w.z), 0).xyz);                                                                            \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "            mat3 triangle = mat3(texelFetch(g.vertexSampler, ivec2(vIDs.x % w.y, vIDs.x / w.y), 0).xyz,                                                                                 \n" +
+                               "                                 texelFetch(g.vertexSampler, ivec2(vIDs.y % w.y, vIDs.y / w.y), 0).xyz,                                                                                 \n" +
+                               "                                 texelFetch(g.vertexSampler, ivec2(vIDs.z % w.y, vIDs.z / w.y), 0).xyz);                                                                                \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "            if(_BVH_rayIntersectTriangle(ro, rd, triangle).z > _BVH_polygonOffset) return true;                                                                                         \n" +
+                               "        }                                                                                                                                                                               \n" +
+                               "        else // branch                                                                                                                                                                  \n" +
+                               "        {                                                                                                                                                                               \n" +
+                               "            // add children to the _BVH_stack                                                                                                                                           \n" +
+                               "            _BVH_stack[_BVH_stackPointer++] = left;                                                                                                                                     \n" +
+                               "            _BVH_stack[_BVH_stackPointer++] = right;                                                                                                                                    \n" +
+                               "        }                                                                                                                                                                               \n" +
+                               "    }                                                                                                                                                                                   \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return false;                                                                                                                                                                       \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "void textureGeoData(in samplerData s, in int vertexID, out vec3 position)                                                                                                               \n" +
+                               "bool textureGeoDataSDF( in samplerGeoData g,                                                                                                                                            \n" +
+                               "                        const vec3 p,                                                                                                                                                   \n" +
+                               "                        inout float signedDistance,                                                                                                                                     \n" +
+                               "                        inout uint triangleID,                                                                                                                                          \n" +
+                               "                        const uint maxIterations )                                                                                                                                      \n" +
                                "{                                                                                                                                                                                       \n" +
-                               "    highp vec4 accessor0 = textureData(s, vertexID, 0);                                                                                                                                 \n" +
-                               "    position = accessor0.xyz;                                                                                                                                                           \n" +
+                               "    float depth = signedDistance;                                                                                                                                                       \n" +
+                               "    float distanceSign = 1.0;                                                                                                                                                           \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    if(!_BVH_async_mode)                                                                                                                                                                \n" +
+                               "    {                                                                                                                                                                                   \n" +
+                               "        _BVH_stack[0] = 0u,                                                                                                                                                             \n" +
+                               "        _BVH_stackPointer = 1u;                                                                                                                                                         \n" +
+                               "    }                                                                                                                                                                                   \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    uvec3 w = uvec3(textureSize(g.nodeSampler, 0).x, textureSize(g.vertexSampler, 0).x, textureSize(g.faceSampler, 0).x);                                                               \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    for(uint i = 0u; (i < maxIterations && _BVH_stackPointer > 0u && _BVH_stackPointer < _BVH_max_depth); ++i)                                                                          \n" +
+                               "    {                                                                                                                                                                                   \n" +
+                               "        uint nodeID = _BVH_stack[--_BVH_stackPointer];                                                                                                                                  \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        uvec2 texelIDs = nodeID * 2u + uvec2(0u, 1u);                                                                                                                                   \n" +
+                               "        vec4 nodeData0 = texelFetch(g.nodeSampler, ivec2(texelIDs.x % w.x, texelIDs.x / w.x), 0);                                                                                       \n" +
+                               "        vec4 nodeData1 = texelFetch(g.nodeSampler, ivec2(texelIDs.y % w.x, texelIDs.y / w.x), 0);                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        vec3 aabbMin = nodeData0.xyz;                                                                                                                                                   \n" +
+                               "        vec3 aabbMax = nodeData1.xyz;                                                                                                                                                   \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        float d = _BVH_signedDistanceAABB(p, aabbMin, aabbMax);                                                                                                                         \n" +
+                               "        if(signedDistance >= 0.0 && d >= signedDistance) continue;                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        uint left  = floatBitsToUint(nodeData0.w);                                                                                                                                      \n" +
+                               "        uint right = floatBitsToUint(nodeData1.w);                                                                                                                                      \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        bool isLeaf = (left == 0u);                                                                                                                                                     \n" +
+                               "        left -= 1u;                                                                                                                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "        if(isLeaf) // leaf                                                                                                                                                              \n" +
+                               "        {                                                                                                                                                                               \n" +
+                               "            uvec3 vIDs = floatBitsToUint(texelFetch(g.faceSampler, ivec2(right % w.z, right / w.z), 0).xyz);                                                                            \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "            mat3 triangle = mat3(texelFetch(g.vertexSampler, ivec2(vIDs.x % w.y, vIDs.x / w.y), 0).xyz,                                                                                 \n" +
+                               "                                texelFetch(g.vertexSampler, ivec2(vIDs.y % w.y, vIDs.y / w.y), 0).xyz,                                                                                  \n" +
+                               "                                texelFetch(g.vertexSampler, ivec2(vIDs.z % w.y, vIDs.z / w.y), 0).xyz);                                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "            float new_sd = _BVH_signedDistanceTriangle(triangle, p);                                                                                                                    \n" +
+                               "            float new_ud = abs(new_sd);                                                                                                                                                 \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "            if(new_ud < signedDistance || signedDistance < 0.0)                                                                                                                         \n" +
+                               "            {                                                                                                                                                                           \n" +
+                               "                distanceSign = sign(new_sd);                                                                                                                                            \n" +
+                               "                signedDistance = new_ud;                                                                                                                                                \n" +
+                               "                triangleID = right;                                                                                                                                                     \n" +
+                               "            }                                                                                                                                                                           \n" +
+                               "        }                                                                                                                                                                               \n" +
+                               "        else // branch                                                                                                                                                                  \n" +
+                               "        {                                                                                                                                                                               \n" +
+                               "            // add children to the _BVH_stack                                                                                                                                           \n" +
+                               "            _BVH_stack[_BVH_stackPointer++] = left;                                                                                                                                     \n" +
+                               "            _BVH_stack[_BVH_stackPointer++] = right;                                                                                                                                    \n" +
+                               "        }                                                                                                                                                                               \n" +
+                               "    }                                                                                                                                                                                   \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    signedDistance *= distanceSign;                                                                                                                                                     \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return (_BVH_stackPointer < 1u && (depth < 0.0 || signedDistance < depth));                                                                                                         \n" +
                                "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
-                               "#define textureGeoDataSize textureDataSize                                                                                                                                              \n" +
+                               "bool textureGeoDataUDF( in samplerGeoData g,                                                                                                                                            \n" +
+                               "                        const vec3 p,                                                                                                                                                   \n" +
+                               "                        inout float unsignedDistance,                                                                                                                                   \n" +
+                               "                        inout uint triangleID,                                                                                                                                          \n" +
+                               "                        const uint maxIterations )                                                                                                                                      \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "    bool retval = textureGeoDataSDF(g, p, unsignedDistance, triangleID, maxIterations);                                                                                                 \n" +
+                               "    unsignedDistance = abs(unsignedDistance);                                                                                                                                           \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "    return retval;                                                                                                                                                                      \n" +
+                               "}                                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "bool textureGeoDataSDF( in samplerGeoData g,                                                                                                                                            \n" +
+                               "                        const vec3 p,                                                                                                                                                   \n" +
+                               "                        inout float signedDistance,                                                                                                                                     \n" +
+                               "                        const uint maxIterations )                                                                                                                                      \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "    uint triangleID;                                                                                                                                                                    \n" +
+                               "    return textureGeoDataSDF(g, p, signedDistance, triangleID, maxIterations);                                                                                                          \n" +
+                               "}                                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n" +
+                               "bool textureGeoDataUDF( in samplerGeoData g,                                                                                                                                            \n" +
+                               "                        const vec3 p,                                                                                                                                                   \n" +
+                               "                        inout float unsignedDistance,                                                                                                                                   \n" +
+                               "                        const uint maxIterations )                                                                                                                                      \n" +
+                               "{                                                                                                                                                                                       \n" +
+                               "    uint triangleID;                                                                                                                                                                    \n" +
+                               "    return textureGeoDataUDF(g, p, unsignedDistance, triangleID, maxIterations);                                                                                                        \n" +
+                               "}                                                                                                                                                                                       \n" +
                                "                                                                                                                                                                                        \n" +
                                "mediump float textureLods(in sampler2D sampler)                                                                                                                                         \n" +
                                "{                                                                                                                                                                                       \n" +
@@ -567,14 +952,6 @@ let glContext = function(canvasID)
                                "                                                                                                                                                                                        \n" +
                                "    mediump vec4 radiance = mix(base, next, mod(roughness * 15.0, 1.0));                                                                                                                \n" +
                                "    radiance = mix(textureLod(environmentMap, uv, radiance0_mipID), radiance, smoothstep(0.01, 0.0625, roughnessSquared));                                                              \n" +
-                               "    radiance.rgb = pow(radiance.rgb, vec3(1.0 / 2.24));                                                                                                                                 \n" +
-                               "                                                                                                                                                                                        \n" +
-                               "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                             \n" +
-                               "    mediump float oldSeed = _randomSeed;                                                                                                                                                \n" +
-                               "    srand(glTime * sin(glTime) + (gl_FragCoord.x + 4096.0 * gl_FragCoord.y) / 4096.0);                                                                                                  \n" +
-                               "    radiance.rgb = max(radiance.rgb + (1.0 / 255.0) * (-1.0 + 2.0 * random()), vec3(0)); // removes banding artifacts via dithering                                                     \n" +
-                               "    _randomSeed = oldSeed;                                                                                                                                                              \n" +
-                               "#endif                                                                                                                                                                                  \n" +
                                "                                                                                                                                                                                        \n" +
                                "    return radiance;                                                                                                                                                                    \n" +
                                "}                                                                                                                                                                                       \n" +
@@ -589,14 +966,6 @@ let glContext = function(canvasID)
                                "                                                                                                                                                                                        \n" +
                                "    mediump vec2 uv_lut = mix(vec2(0.0) + 0.5 * texelSize, vec2(0.25) - 0.5 * texelSize, uv) + vec2(0.75);                                                                              \n" +
                                "    mediump vec4 irradiance = textureLod(environmentMap, uv_lut, radianceLUT_mipID);                                                                                                    \n" +
-                               "    irradiance.rgb = pow(irradiance.rgb, vec3(1.0 / 2.24));                                                                                                                             \n" +
-                               "                                                                                                                                                                                        \n" +
-                               "#ifdef GLES_FRAGMENT_SHADER                                                                                                                                                             \n" +
-                               "    mediump float oldSeed = _randomSeed;                                                                                                                                                \n" +
-                               "    srand(glTime * sin(glTime) + (gl_FragCoord.x + 4096.0 * gl_FragCoord.y) / 4096.0);                                                                                                  \n" +
-                               "    irradiance.rgb = max(irradiance.rgb + (1.0 / 255.0) * (-1.0 + 2.0 * random()), vec3(0)); // removes banding artifacts via dithering                                                 \n" +
-                               "    _randomSeed = oldSeed;                                                                                                                                                              \n" +
-                               "#endif                                                                                                                                                                                  \n" +
                                "                                                                                                                                                                                        \n" +
                                "    return irradiance;                                                                                                                                                                  \n" +
                                "}                                                                                                                                                                                       \n" +
@@ -633,8 +1002,358 @@ let glContext = function(canvasID)
                                "{                                                                                                                                                                                       \n" +
                                "    mediump int radianceLUT_mipID = int(textureLods(environmentMap) - 10.0); // 512x512                                                                                                 \n" +
                                "    return texelFetch(environmentMap, ivec2(1, 0), radianceLUT_mipID).xyz;                                                                                                              \n" +
-                               "}                                                                                                                                                                                       \n");
-
+                               "}                                                                                                                                                                                       \n" +
+                               "                                                                                                                                                                                        \n"+
+                               "struct BitStream                                                                                                                                                                        \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    uvec4 data;                                                                                                                                                                         \n"+
+                               "    int   padding;                                                                                                                                                                      \n"+
+                               "};                                                                                                                                                                                      \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "const int BitStream_format_8bit  = 8;                                                                                                                                                   \n"+
+                               "const int BitStream_format_16bit = 16;                                                                                                                                                  \n"+
+                               "const int BitStream_format_32bit = 32;                                                                                                                                                  \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "BitStream BitStream_init() {                                                                                                                                                            \n"+
+                               "    return BitStream(uvec4(0), 0);                                                                                                                                                      \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_rewind(inout BitStream bitstream) {                                                                                                                                      \n"+
+                               "    bitstream.padding = 0;                                                                                                                                                              \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_setPosition(inout BitStream bitstream, const int padding) {                                                                                                              \n"+
+                               "    bitstream.padding = padding;                                                                                                                                                        \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// bit streamed write / read                                                                                                                                                            \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, in int size, in uint data)                                                                                                              \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    int i = bitstream.padding >> 5u;  // / 32                                                                                                                                           \n"+
+                               "    int s = bitstream.padding & 0x1F; // % 32                                                                                                                                           \n"+
+                               "    int r = max((s + size) - 32, 0);  // remainder                                                                                                                                      \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    bitstream.padding += size;                                                                                                                                                          \n"+
+                               "    size = size - r;                                                                                                                                                                    \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    bitstream.data[i + 0] |= (data & ((size < 32) ? (1u << size) - 1u : -1u)) << s;                                                                                                     \n"+
+                               "    bitstream.data[i + 1] |= ((r > 0) ? (data >> size) & ((1u << r) - 1u) : 0u);                                                                                                        \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "uint BitStream_read(inout BitStream bitstream, in int size)                                                                                                                             \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    int i = bitstream.padding >> 5u;  // / 32                                                                                                                                           \n"+
+                               "    int s = bitstream.padding & 0x1F; // % 32                                                                                                                                           \n"+
+                               "    int r = max((s + size) - 32, 0);  // remainder                                                                                                                                      \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    uint data = ((bitstream.data[i] >> s) | ((r > 0) ? (bitstream.data[i + 1] << (size - r)) : 0u));                                                                                    \n"+
+                               "    data &= ((size < 32) ? (1u << size) - 1u : -1u);                                                                                                                                    \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    bitstream.padding += size;                                                                                                                                                          \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    return data;                                                                                                                                                                        \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// bool, bvec2, bvec3, bvec4                                                                                                                                                            \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, in bool flag) {                                                                                                                         \n"+
+                               "    BitStream_write(bitstream, 1, uint(flag));                                                                                                                                          \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, out bool flag) {                                                                                                                         \n"+
+                               "    flag = bool(BitStream_read(bitstream, 1));                                                                                                                                          \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, in bvec2 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, flag.x);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.y);                                                                                                                                                 \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, out bvec2 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, flag.x);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.y);                                                                                                                                                  \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, in bvec3 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, flag.x);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.y);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.z);                                                                                                                                                 \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, out bvec3 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, flag.x);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.y);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.z);                                                                                                                                                  \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, in bvec4 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, flag.x);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.y);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.z);                                                                                                                                                 \n"+
+                               "    BitStream_write(bitstream, flag.w);                                                                                                                                                 \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, out bvec4 flag)                                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, flag.x);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.y);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.z);                                                                                                                                                  \n"+
+                               "    BitStream_read(bitstream, flag.w);                                                                                                                                                  \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// uint, uvec2, uvec3, uvec4                                                                                                                                                            \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out uint ui) {                                                                                                         \n"+
+                               "    ui = BitStream_read(bitstream, format);                                                                                                                                             \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in uvec2 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, ui.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.y);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out uvec2 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, ui.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.y);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in uvec3 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, ui.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.z);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out uvec3 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, ui.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.z);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in uvec4 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, ui.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.z);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, ui.w);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out uvec4 ui)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, ui.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.z);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, ui.w);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// int, ivec2, ivec3, ivec4                                                                                                                                                             \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in int si)                                                                                                            \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    if(format == BitStream_format_16bit) si -= 32768;                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_8bit) si -= 128;                                                                                                                                 \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    BitStream_write(bitstream, format, uint(si));                                                                                                                                       \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out int si)                                                                                                            \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    si = int(BitStream_read(bitstream, format));                                                                                                                                        \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    if(format == BitStream_format_16bit) si -= 32768;                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_8bit) si -= 128;                                                                                                                                 \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in ivec2 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, si.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.y);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out ivec2 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, si.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.y);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in ivec3 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, si.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.z);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out ivec3 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, si.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.z);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in ivec4 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, si.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.z);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, si.w);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out ivec4 si)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, si.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.z);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, si.w);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// float, vec2, vec3, vec4                                                                                                                                                              \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in float fp)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    uint data;                                                                                                                                                                          \n"+
+                               "    if(format == BitStream_format_32bit) data = floatBitsToUint(fp);                                                                                                                    \n"+
+                               "    else if(format == BitStream_format_16bit) data = packHalf2x16(vec2(fp, 0));                                                                                                         \n"+
+                               "    else data = uint(round(fp * 255.0));                                                                                                                                                \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    BitStream_write(bitstream, format, data);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out float fp)                                                                                                          \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    uint data = BitStream_read(bitstream, format);                                                                                                                                      \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    if(format == BitStream_format_32bit) fp = uintBitsToFloat(data);                                                                                                                    \n"+
+                               "    else if(format == BitStream_format_16bit) fp = unpackHalf2x16(data).x;                                                                                                              \n"+
+                               "    else fp = float(data) / 255.0;                                                                                                                                                      \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in vec2 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, fp.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.y);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out vec2 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, fp.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.y);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in vec3 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, fp.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.z);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out vec3 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, fp.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.z);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_write(inout BitStream bitstream, const int format, in vec4 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_write(bitstream, format, fp.x);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.y);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.z);                                                                                                                                           \n"+
+                               "    BitStream_write(bitstream, format, fp.w);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_read(inout BitStream bitstream, const int format, out vec4 fp)                                                                                                           \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, fp.x);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.y);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.z);                                                                                                                                            \n"+
+                               "    BitStream_read(bitstream, format, fp.w);                                                                                                                                            \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// custom packing functions                                                                                                                                                             \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_writeNormal(inout BitStream bitstream, const int format, in vec3 n)                                                                                                      \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    n = normalize(n);                                                                                                                                                                   \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    n.xy /= dot(abs(n), vec3(1));                                                                                                                                                       \n"+
+                               "    n.xy = 0.5 + 0.5 * mix(n.xy, (1.0 - abs(n.yx)) * vec2(((n.x >= 0.0) ? 1.0 : -1.0), ((n.y >= 0.0) ? 1.0 : -1.0)), step(n.z, 0.0));                                                   \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    BitStream_write(bitstream, format, n.xy);                                                                                                                                           \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "void BitStream_readNormal(inout BitStream bitstream, const int format, out vec3 n)                                                                                                      \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    BitStream_read(bitstream, format, n.xy);                                                                                                                                            \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    n.xy = -1.0 + 2.0 * n.xy;                                                                                                                                                           \n"+
+                               "    n.z = 1.0 - abs(n.x) - abs(n.y);                                                                                                                                                    \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    if(n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * vec2(((n.x >= 0.0) ? 1.0 : -1.0), ((n.y >= 0.0) ? 1.0 : -1.0));                                                                            \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    n = normalize(n);                                                                                                                                                                   \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "// encoding / decoding                                                                                                                                                                  \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "vec4 BitStream_encode(const BitStream bitstream, const int format)                                                                                                                      \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    if(format == BitStream_format_8bit)                                                                                                                                                 \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        return vec4((bitstream.data.x & uvec4(0x000000FFu, 0x0000FF00u, 0x00FF0000u, 0xFF000000u)) >> uvec4(0, 8, 16, 24)) / 255.0;                                                     \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_16bit) // bugged !! DO NOT USE                                                                                                                   \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        uvec4 bytesX = ((bitstream.data.x & uvec4(0x000000FFu, 0x0000FF00u, 0x00FF0000u, 0xFF000000u)) >> uvec4(0, 8, 16, 24));                                                         \n"+
+                               "        uvec4 bytesY = ((bitstream.data.y & uvec4(0x000000FFu, 0x0000FF00u, 0x00FF0000u, 0xFF000000u)) >> uvec4(0, 8, 16, 24));                                                         \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "        return vec4(bytesX.xy + 256u * bytesX.zw, bytesY.xy + 256u * bytesY.zw);                                                                                                        \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_32bit)                                                                                                                                           \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        return uintBitsToFloat(bitstream.data);                                                                                                                                         \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    return vec4(0);                                                                                                                                                                     \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "BitStream BitStream_decode(const vec4 encoded, const int format)                                                                                                                        \n"+
+                               "{                                                                                                                                                                                       \n"+
+                               "    uvec4 data = uvec4(0);                                                                                                                                                              \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    if(format == BitStream_format_8bit)                                                                                                                                                 \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        data = uvec4(round(encoded * 255.0));                                                                                                                                           \n"+
+                               "        data = uvec4(((data.x << 0) | (data.y << 8) | (data.z << 16) | (data.w << 24)), 0, 0, 0);                                                                                       \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_16bit) // bugged !! DO NOT USE                                                                                                                   \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        data = uvec4(encoded);                                                                                                                                                          \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "        uvec4 bytesX = uvec4(data.xy % 256u, data.xy / 256u);                                                                                                                           \n"+
+                               "        uvec4 bytesY = uvec4(data.zw % 256u, data.zw / 256u);                                                                                                                           \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "        data.x  = ((bytesX.x << 0) | (bytesX.y << 8) | (bytesX.z << 16) | (bytesX.w << 24));                                                                                            \n"+
+                               "        data.y  = ((bytesY.x << 0) | (bytesY.y << 8) | (bytesY.z << 16) | (bytesY.w << 24));                                                                                            \n"+
+                               "        data.zw = uvec2(0);                                                                                                                                                             \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "    else if(format == BitStream_format_32bit)                                                                                                                                           \n"+
+                               "    {                                                                                                                                                                                   \n"+
+                               "        data = floatBitsToUint(encoded);                                                                                                                                                \n"+
+                               "    }                                                                                                                                                                                   \n"+
+                               "                                                                                                                                                                                        \n"+
+                               "    return BitStream(data, 0);                                                                                                                                                          \n"+
+                               "}                                                                                                                                                                                       \n"+
+                               "                                                                                                                                                                                        \n");
+                               
     this.__appendShadingHeader(glDepthTracingTexture.__glslAPI());
 }
 
@@ -1170,8 +1889,15 @@ glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, 
     return environmentMap;
 }
 
-glContext.prototype.getGraphicsCardModelName = function() {
-    return this.getGL().getParameter(this.__extensions.rendererDebugger.UNMASKED_RENDERER_WEBGL);
+glContext.prototype.getGraphicsCardModelName = function()
+{
+    if(this.__graphicsCardName == null)
+    {
+        let gl = this.getGL();
+        this.__graphicsCardName = gl.getParameter(((this.__extensions.rendererDebugger != null) ? this.__extensions.rendererDebugger.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+    }
+
+    return this.__graphicsCardName;
 }
 
 glContext.prototype.getTextureMaxAnisotropy = function()
@@ -1245,7 +1971,8 @@ glContext.prototype.run = function()
         {
             this.__timeElapsed = 0.0;
             this.__initialized = true;
-            
+            this.__prfProfiler.clear();
+
             if(this.__onInitCallback != null) this.__onInitCallback(gl);
         }
 
@@ -1281,6 +2008,7 @@ glContext.prototype.run = function()
             
             if(self.__onFrameUpdateCallback != null) self.__onFrameUpdateCallback(gl, dt, self.__timeElapsed);
             
+            self.__inputDeviceManager.update();
             glAudioPlayer.__update(dt);
 
             let shouldCaptureWithAlphaChannel    = (self.__streamCapturing &&  self.__streamCaptureWithAlpha);
@@ -1296,6 +2024,7 @@ glContext.prototype.run = function()
         
             if(shouldCaptureWithoutAlphaChannel) self.__streamCapture.capture(self.__canvas);
 
+            self.__prfProfiler.update();
             self.__fpsCounter.update();  
         };
                                      
@@ -1420,6 +2149,38 @@ glContext.prototype.endCaptureSession = function(fileName)
             });
         });
     }
+}
+
+glContext.prototype.isProfilingSupported = function() {
+    return this.__prfProfiler.supported();
+}
+
+glContext.prototype.isProfilingEnabled = function() {
+    return this.__prfProfiler.enabled();
+}
+
+glContext.prototype.enableProfiling = function(flag) {
+    this.__prfProfiler.enable(flag);
+} 
+
+glContext.prototype.getProfiling = function(sectionName) {
+    return this.__prfProfiler.get(sectionName);
+}
+
+glContext.prototype.clearProfiling = function(sectionName) {
+    this.__prfProfiler.clear(sectionName);
+}
+
+glContext.prototype.createProfilingSection = function() {
+    return this.__prfProfiler.create();
+}
+
+glContext.prototype.startProfilingSection = function(sectionName) {
+    this.__prfProfiler.push(sectionName);
+}
+
+glContext.prototype.endProfilingSection = function() {
+    this.__prfProfiler.pop();
 }
 
 glContext.prototype.getFps = function() {

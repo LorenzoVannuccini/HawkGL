@@ -31,8 +31,10 @@
         
         <canvas id="glCanvas" style="width:100vw; height:100vh; display:inline-block; position:fixed;"></canvas>
         <div style="position:fixed; display:inline-block; padding-top:3px; padding-left:4px; color:white; text-shadow:-1px -1px 0 #000, 1px -1px 0 #000,-1px 1px 0 #000, 1px 1px 0 #000;">FPS:&nbsp; <label id="fpsLabel"></label></div>
-        <div id="loadingSplash" style="position:fixed; display:inline-block; width:100%; height:100%; background-color:rgba(0, 0, 0, 0.75);">
-            <div style="position:fixed; display:inline-block; width:60px; height:60px; margin-top:calc(50vh - 30px); margin-left:calc(50vw - 30px); background-image:url('Resources/Icons/loading.gif'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
+        <div id="loadingSplash" style="position:fixed; display:inline-block; width:100%; height:100%; background-image:url('Resources/Icons/splash_page.jpg'); background-size:cover; background-position:center; background-repeat:no-repeat; background-color:black; color:white; text-shadow:-1px -1px 0 #000, 1px -1px 0 #000,-1px 1px 0 #000, 1px 1px 0 #000;">
+            <div style="position:fixed; display:inline-block; width:20vw; height:20vh; right:2vh; top:2vh; background-image:url('Resources/Icons/hawkGL_logo.png'); background-size:contain; background-position:right 0px top 0px; background-repeat:no-repeat;"></div>
+            <div style="position:fixed; display:inline-block; width:80px; height:80px; margin-top:calc(50vh - 40px); margin-left:calc(50vw - 40px); background-image:url('Resources/Icons/loading.gif'); background-size:contain; background-position:center; background-repeat:no-repeat;"></div>
+            <div style="position:fixed; display:inline-block; width:100%; height:60px; line-height:60px; bottom:25vh; font-size:20px; text-align:center; background:linear-gradient(to right, transparent, rgba(0,0,0,0.5), transparent);"><label id="loadingLabel"></label></div>
         </div>
 
         <script type="text/javascript">
@@ -43,8 +45,10 @@
         let glCanvas = document.getElementById("glCanvas");
         let ctx = new glContext(glCanvas);
         
-        ctx.onAssetLoading( function(rate, pending) {
+        ctx.onAssetLoading( function(rate, pending) 
+        {
             loadingSplash.style.display = (pending ? "inline-block" : "none");
+            loadingLabel.innerHTML = "Loading " + Math.floor(rate * 100.0) + "%";
         });
 
         let lightVector = glVector3f.normalize(1.0);

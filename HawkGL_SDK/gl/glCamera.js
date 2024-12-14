@@ -21,14 +21,18 @@
 //    3. This notice may not be removed or altered from any source distribution.
 //
 
-let glCamera = function(x, y, z, pitch, yaw, roll) 
+let glCamera = function(position, forward) 
 {
-    this.__position     = new glVector3f();
-    this.__pitchYawRoll = new glVector3f();
+    this.__position = new glVector3f(position);
+    this.__targetPosition = new glVector3f();
 
-    this.setPosition(x, y, z);
-    this.setOrientation(pitch, yaw, roll);
+    this.__orientation = new glQuaternion();
+    this.__targetOrientation = new glQuaternion();
 
+    if(forward == null) forward = new glVector3f(0, 0, 1);
+    this.setOrientation(forward);
+    this.setPosition(position);
+    
     this.update();    
 }
 
@@ -36,26 +40,18 @@ glCamera.__PI = 3.14159265358979323846;
 glCamera.__180overPI = (180.0 / glCamera.__PI);
 glCamera.__PIover180 = (glCamera.__PI / 180.0);
 
-glCamera.__orientationDifference = function(targetPitchYawRoll, currentPitchYawRoll) {
-    return glVector3f.sub(targetPitchYawRoll, currentPitchYawRoll).add(180.0).mod(360.0).sub(180.0);
-}
-
 glCamera.prototype.update = function(dt, stiffness)
 {
     if(dt == null) dt = 1.0;
     if(stiffness == null) stiffness = 1.0;
     
     dt = Math.min(Math.max(dt * stiffness * 10.0, 0.0), 1.0);
-    
+
     this.__position.add(glVector3f.sub(this.__targetPosition, this.__position).mul(dt));
-    this.__pitchYawRoll.add(glCamera.__orientationDifference(this.__targetPitchYawRoll, this.__pitchYawRoll).mul(dt));
+    this.__orientation = glQuaternion.slerp(this.__orientation, this.__targetOrientation, dt);
 }
 
-glCamera.prototype.move = function(x, y, z) {
-    this.__targetPosition.add(x, y, z);
-}
-
-glCamera.prototype.moveTo = function(x, y, z) {
+glCamera.prototype.setPosition = function(x, y, z) {
     this.__targetPosition.set(x, y, z);
 }
 
@@ -63,63 +59,94 @@ glCamera.prototype.getPosition = function() {
     return new glVector3f(this.__position);
 }
 
-glCamera.prototype.setPosition = function(x, y, z) {
-    this.__targetPosition = new glVector3f(x, y, z);
-}
-
-glCamera.prototype.rotate = function(pitch, yaw, roll) {
-    this.__targetPitchYawRoll.add(pitch, yaw, roll);
-}
-
-glCamera.prototype.lookAt = function(x, y, z) {
-    this.setDirection(glVector3f.sub(new glVector3f(x, y, z), this.__position));
-}
-
-glCamera.prototype.setDirection = function(x, y, z)
+glCamera.prototype.setOrientation = function(forward) 
 {
-    let direction = glVector3f.normalize(x, y, z);
-
-    this.__targetPitchYawRoll.y = Math.atan2(direction.x, -direction.z) * glCamera.__180overPI;
-    this.__targetPitchYawRoll.x = Math.asin(-direction.y) * glCamera.__180overPI;
-}
-
-glCamera.prototype.setOrientation = function(pitch, yaw, roll) {
-    this.__targetPitchYawRoll = new glVector3f(pitch, yaw, roll);
-}
-
-glCamera.prototype.getOrientationMatrix4x4f = function() 
-{
-    let matrix = new glMatrix4x4f();
-
-    matrix.mul(glMatrix4x4f.rotationMatrix(this.__pitchYawRoll.x, 1.0, 0.0, 0.0));
-    matrix.mul(glMatrix4x4f.rotationMatrix(this.__pitchYawRoll.y, 0.0, 1.0, 0.0));
-    matrix.mul(glMatrix4x4f.rotationMatrix(this.__pitchYawRoll.z, 0.0, 0.0, 1.0));
+    let up = new glVector3f(0, 1, 0);
+    this.__up = new glVector3f(up);
     
-    return matrix;
-}
-
-glCamera.prototype.getDirection = function()  {
-    return glVector3f.normalize(glMatrix4x4f.inverse(this.getOrientationMatrix4x4f()).mul(new glVector3f(0.0, 0.0, -1.0)));
+    this.__targetOrientation.set(glMatrix4x4f.transpose(glMatrix4x4f.lookAtMatrix(new glVector3f(0), forward, up)));
+    this.__orientation.set(this.__targetOrientation);
 }
 
 glCamera.prototype.getMatrix4x4f = function() 
 {
-    let matrix = this.getOrientationMatrix4x4f();
+    let matrix = this.__orientation.toInverseMatrix4x4f();
     matrix.mul(glMatrix4x4f.translationMatrix(glVector3f.flip(this.__position)));
     
     return matrix;
 }
 
-glCamera.prototype.getPitch = function() {
-    return this.__pitchYawRoll.x;
+glCamera.prototype.getRight = function() {
+    return glVector3f.normalize(this.__orientation.mul(new glVector3f(1, 0, 0)));
 }
 
-glCamera.prototype.getYaw = function() {
-    return this.__pitchYawRoll.y;
+glCamera.prototype.getLeft = function() {
+    return glVector3f.flip(this.getRight());
 }
 
-glCamera.prototype.getRoll = function() {
-    return this.__pitchYawRoll.z;
+glCamera.prototype.setUp = function(up) {
+    this.__up = up;
+}
+
+glCamera.prototype.getUp = function() {
+    return ((this.__up != null) ? new glVector3f(this.__up) : glVector3f.normalize(this.__orientation.mul(new glVector3f(0, 1, 0))));
+}
+
+glCamera.prototype.getDown = function() {
+    return glVector3f.flip(this.getDown());
+}
+
+glCamera.prototype.getForward = function() {
+    return glVector3f.normalize(this.__orientation.mul(new glVector3f(0, 0, -1)));
+}
+
+glCamera.prototype.getBackward = function() {
+    return glVector3f.flip(this.getForward());
+}
+
+glCamera.prototype.translate = function(x, y, z) {
+    this.__targetPosition.add(x, y, z);
+}
+
+glCamera.prototype.rotatePitch = function(degrees) 
+{
+    if(degrees == 0.0) return;
+    
+    let right = glVector3f.normalize(this.__targetOrientation.mul(new glVector3f(1, 0, 0)));
+    this.__targetOrientation.rotate(right, -degrees);
+}
+
+glCamera.prototype.rotateYaw = function(degrees) 
+{
+    if(degrees == 0.0) return;
+    
+    let up = ((this.__up != null) ? this.__up : glVector3f.normalize(this.__targetOrientation.mul(new glVector3f(0, 1, 0))));
+    this.__targetOrientation.rotate(up, -degrees);
+}
+
+glCamera.prototype.rotateRoll = function(degrees) 
+{
+    if(degrees == 0.0) return;
+
+    let forward = glVector3f.normalize(this.__targetOrientation.mul(new glVector3f(0, 0, 1)));
+    this.__targetOrientation.rotate(forward, -degrees);
+/*
+    let q = new glQuaternion();
+    q.rotate(forward, -degrees);
+    this.__up = q.mul(this.__up);
+*/
+    this.__up = null;
+}
+
+glCamera.prototype.rotate = function(degrees, axis) 
+{
+    if(degrees == 0.0) return;
+    
+    this.__targetOrientation.rotate(axis, degrees);
+}
+
+glCamera.prototype.lookAt = function(x, y, z) {
+    this.setOrientation(glVector3f.normalize(glVector3f.sub(new glVector3f(x, y, z), this.__position)), this.getUp());
 }
 
 // ----------------------------------------------------------------------------------------
@@ -617,7 +644,7 @@ glCinematicCamera.prototype.getPosition = function() {
 }
 
 glCinematicCamera.prototype.getDirection = function() {
-    return this.__transform.orientation.toVector3f();
+    return this.__transform.orientation.toDirection();
 }
 
 glCinematicCamera.prototype.getMatrix4x4f = function() {

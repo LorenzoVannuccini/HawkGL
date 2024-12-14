@@ -672,6 +672,14 @@ glEnvironmentMap.prototype.setDirectionalLightColor = function(r, g, b) {
     this.__directionalLightColor.set(r, g, b);
 }
 
+glEnvironmentMap.prototype.getDirectionalLightVector = function() {
+    return new glVector3f(this.__directionalLightVector);
+}
+
+glEnvironmentMap.prototype.getDirectionalLightColor = function() {
+    return new glVector3f(this.__directionalLightColor);
+}
+
 glEnvironmentMap.prototype.setSkyIntensity = function(multiplier) {
     this.__skyMapIntensityUniform.set(multiplier);
 }

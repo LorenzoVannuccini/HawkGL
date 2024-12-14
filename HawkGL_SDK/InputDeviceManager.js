@@ -174,7 +174,7 @@ InputDeviceManager.prototype.__registerHooks = function()
             
         let shouldFireEvent = false;
         if(self.__keyState[keyCode] == 0) shouldFireEvent = true;
-        
+
         self.__keyState[keyCode] = Math.min(self.__keyState[keyCode] + 1, 2);
         
         if(shouldFireEvent && self.__enabled) 
@@ -239,11 +239,7 @@ InputDeviceManager.prototype.__registerHooks = function()
     this.__onMouseUpHook = function(e)
     {
         let keyCode = (e.which || e.keyCode);
-        if(keyCode == self.__cursorDragKeyCode)
-        {
-            self.__cursorDragEvents[keyCode] = null;
-            console.log("drag end");
-        }
+        if(keyCode == self.__cursorDragKeyCode) self.__cursorDragEvents[keyCode] = null;
 
         self.__onKeyUpHook(e);
     };
@@ -309,6 +305,14 @@ InputDeviceManager.prototype.clear = function(shouldClearEvents)
     });
 
     this.__dragging = 0;
+}
+
+InputDeviceManager.prototype.update = function()
+{
+    for(let i = 0, e = this.__keyState.length; i != e; ++i)
+    {
+        if(this.__keyState[i] == 1) this.__keyState[i] = 2;
+    }
 }
 
 InputDeviceManager.prototype.enable = function(flag) {

@@ -29,6 +29,18 @@ let glQuaternion = function(x, y, z, w)
     this.set(x, y, z, w);
 }
 
+glQuaternion.prototype.toVector4f = function() { // vec4.xyzw swizzle
+    return new glVector4f(this.__x, this.__y, this.__z, this.__w);
+}
+
+glQuaternion.prototype.toVector3f = function() { // vec4.xyz swizzle
+    return new glVector3f(this.__x, this.__y, this.__z);
+}
+
+glQuaternion.prototype.toVector2f = function() { // vec4.xy swizzle
+    return new glVector2f(this.__x, this.__y);
+}
+
 glQuaternion.__PI = 3.14159265358979323846;
 glQuaternion.__180overPI = (180.0 / glQuaternion.__PI);
 glQuaternion.__PIover180 = (glQuaternion.__PI / 180.0);
@@ -179,7 +191,7 @@ glQuaternion.prototype.__updateMatrix = function()
     this.__matrixUpdated = true;
 }
 
-glQuaternion.prototype.toVector3f = function() {
+glQuaternion.prototype.toDirection = function() {
     return glVector3f.normalize(this.toInverseMatrix4x4f().mul(new glVector3f(0.0, 0.0, -1.0)));
 }
 
@@ -228,6 +240,8 @@ glQuaternion.prototype.rotate = function(axis, degrees)
     if(degrees != 0.0 && axis.squaredLength() > 0.0) {
         this.set(this.mul(new glQuaternion(axis, degrees)));
     }
+
+    this.normalize();
 }
 
 glQuaternion.prototype.normalize = function()
@@ -268,6 +282,18 @@ glQuaternion.mul = function(a, b) {
     return (new glQuaternion(a)).mul(b);
 }
 
+glQuaternion.prototype.conjugate = function() // inverse rotation, or q^-1
+{
+    this.__x = -this.__x;
+    this.__y = -this.__y;
+    this.__z = -this.__z;
+    this.__w = +this.__w;
+
+    this.__matrixUpdated = this.__inverseMatrixUpdated = false;
+    
+    return this;
+}
+
 glQuaternion.prototype.flip = function()
 {
     this.__x = -this.__x;
@@ -278,6 +304,10 @@ glQuaternion.prototype.flip = function()
     this.__matrixUpdated = this.__inverseMatrixUpdated = false;
     
     return this;
+}
+
+glQuaternion.conjugate = function(x, y, z, w) {
+    return (new glQuaternion(x, y, z, w)).conjugate();
 }
 
 glQuaternion.flip = function(x, y, z, w) {
@@ -321,8 +351,8 @@ glQuaternion.slerp = function(a, b, t)
     let epsilon = 1e-6;
     if(Math.abs(sn) <= epsilon) // coplanar
     {
-        let forward = b.toVector3f();
-        if(glVector3f.dot(a.toVector3f(), forward) >= 0.0) return new glQuaternion(b); // same direction
+        let forward = b.toDirection();
+        if(glVector3f.dot(a.toDirection(), forward) >= 0.0) return new glQuaternion(b); // same direction
        
         let up = new glVector3f(0.0, 1.0, 0.0);
         if(glVector3f.cross(forward, up).squaredLength() < epsilon)

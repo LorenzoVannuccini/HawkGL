@@ -28,6 +28,14 @@ let glVector4f = function(x, y, z, w)
     this.set(x, y, z, w);  
 }
 
+glVector4f.prototype.toVector3f = function() { // vec4.xyz swizzle
+    return new glVector3f(this.x, this.y, this.z);
+}
+
+glVector4f.prototype.toVector2f = function() { // vec4.xy swizzle
+    return new glVector2f(this.x, this.y);
+}
+
 glVector4f.prototype.squaredLength = function() {
     return glVector4f.dot(this, this);
 }

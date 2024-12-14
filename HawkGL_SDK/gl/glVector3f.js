@@ -221,9 +221,6 @@ glVector3f.cross = function(a, b)
                           (a.x * b.y - a.y * b.x));
 }
 
-glVector3f.random = function()
-{    
-    return glVector3f.normalize((-1.0 + 2.0 * Math.random()), 
-                                (-1.0 + 2.0 * Math.random()),
-                                (-1.0 + 2.0 * Math.random()));
+glVector3f.random = function() {
+    return glVector3f.normalize(glVector3f.max(new glVector3f(Math.random(), Math.random(), Math.random()), new glVector3f(1e-6))).mul((Math.random() > 0.5 ? +1.0 : -1.0));
 }

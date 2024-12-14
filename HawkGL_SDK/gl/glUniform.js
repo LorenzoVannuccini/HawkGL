@@ -649,12 +649,6 @@ let glUniformSamplerData = function(ctx, program, name, unitID, dataDescriptor)
     this.__unitID  = new glUniformInt(ctx, program, name + ".unitID",  unitID);
 }
 
-glUniformSamplerData.prototype.update = function()
-{
-    this.__sampler.update();
-    this.__unitID.update();
-}
-
 glUniformSamplerData.prototype.set = function(unitID)
 {
     this.__sampler.set(unitID);
@@ -666,3 +660,46 @@ glUniformSamplerData.prototype.get = function() {
 }
 
 // -------------------------------------------------------------------------------------------
+
+let glUniformSamplerGeoData = function(ctx, program, name, nodesUnitID, attribUnitID, verticesUnitID, trianglesUnitID)
+{
+    this.__vertexSampler = new glUniformInt(ctx, program, name + ".vertexSampler", verticesUnitID);
+    this.__attribSampler = new glUniformInt(ctx, program, name + ".attribSampler", attribUnitID);
+    this.__faceSampler   = new glUniformInt(ctx, program, name + ".faceSampler",   trianglesUnitID);
+    this.__nodeSampler   = new glUniformInt(ctx, program, name + ".nodeSampler",   nodesUnitID);
+}
+
+glUniformSamplerGeoData.prototype.setNodeSampler = function(unitID) {
+    this.__nodeSampler.set(unitID);
+}
+
+glUniformSamplerGeoData.prototype.getNodeSampler = function() {
+    return this.__nodeSampler.get();
+}
+
+glUniformSamplerGeoData.prototype.setAttribSampler = function(unitID) {
+    this.__attribSampler.set(unitID);
+}
+
+glUniformSamplerGeoData.prototype.getAttribSampler = function() {
+    return this.__attribSampler.get();
+}
+
+glUniformSamplerGeoData.prototype.setFaceSampler = function(unitID) {
+    this.__faceSampler.set(unitID);
+}
+
+glUniformSamplerGeoData.prototype.getFaceSampler = function() {
+    return this.__faceSampler.get();
+}
+
+glUniformSamplerGeoData.prototype.seNodeSampler = function(unitID) {
+    this.__nodeSampler.set(unitID);
+}
+
+glUniformSamplerGeoData.prototype.getNodeSampler = function() {
+    return this.__nodeSampler.get();
+}
+
+// -------------------------------------------------------------------------------------------
+

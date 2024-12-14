@@ -78,9 +78,11 @@ let HawkGL_SDK_relativePath = "";
     includeScriptSDK("gl/glVector4f.js");
     includeScriptSDK("gl/glMatrix4x4f.js");
     includeScriptSDK("gl/glQuaternion.js");
-    
+    includeScriptSDK("gl/glBVH.js");
+
     includeScriptSDK("parserGLTF.js");
     
+    includeScriptSDK("gl/glPerformanceProfiler.js");
     includeScriptSDK("gl/glContext.js");
     includeScriptSDK("gl/glAABB.js");
     includeScriptSDK("gl/glCamera.js");

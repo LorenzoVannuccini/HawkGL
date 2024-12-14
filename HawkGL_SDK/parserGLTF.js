@@ -398,7 +398,7 @@ MinimalGLTFLoader.AnimationSampler.prototype.getValue = function (t)
           
         let q = glQuaternion.slerp(qa, qb, t);
         
-        return new glVector4f(q.__x, q.__y, q.__z, q.__w);
+        return q.toVector4f();
         
     } : function(t) // vector lerp
     {        
@@ -654,7 +654,7 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents, s
                 
             let q = glQuaternion.slerp(qa, qb, t);
 
-            node.rotation.set(q.__x, q.__y, q.__z, q.__w);
+            node.rotation.set(q.toVector4f());
 
         } else if(time >= node.transitionTimeEnd) node.transitionTimeStart = node.transitionTimeEnd = 0.0; 
 
@@ -662,7 +662,7 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents, s
     }
 
     let self = this;
-    let animationID   = 0;
+    let animationID = 0;
     
     function updateAnimationMatrices(node, parentTransform, sceneMatrices)
     {
@@ -672,7 +672,22 @@ gltfAnimation.prototype.__update = function(time, shouldUpdateAnimationEvents, s
         if(node.name != null && node.name.length > 0) 
         {
             let relativeTransform = self.__animator.__nodesRelativeTransforms.get(node.name);
-            if(relativeTransform != null) matrix.mul(relativeTransform);
+            if(relativeTransform != null)
+            {
+                let hasTRS = (relativeTransform.t || relativeTransform.r || relativeTransform.s);
+                if(hasTRS)
+                {
+                    if(relativeTransform.t) node.translation.set(relativeTransform.t);
+                    if(relativeTransform.r) node.rotation.set(relativeTransform.r);
+                    if(relativeTransform.s) node.scale.set(relativeTransform.s);
+                    
+                    node.updateMatrixFromTRS();
+                }
+
+                if(relativeTransform.m != null) node.matrix.mul(relativeTransform.m);
+
+                matrix.set(glMatrix4x4f.mul(parentTransform, node.matrix));
+            }
 
             self.__animator.__nodesAbsoluteTransforms.set(node.name, matrix);
         }
@@ -896,8 +911,36 @@ glTFAnimator.prototype.getNodeName = function(nodeID) {
     return this.__nodeNames.get(nodeID);
 }
 
-glTFAnimator.prototype.setTransform = function(nodeName, matrix) {
-    this.__nodesRelativeTransforms.set(nodeName, matrix);
+glTFAnimator.prototype.setTranslation = function(nodeName, translation) 
+{
+    let transform = this.__nodesRelativeTransforms.get(nodeName);
+    if(transform == null) this.__nodesRelativeTransforms.set(nodeName, (transform = {t: null, r: null, s: null, m: null }));
+    
+    transform.t = new glVector3f(translation);
+}
+
+glTFAnimator.prototype.setRotation = function(nodeName, quaternion) 
+{
+    let transform = this.__nodesRelativeTransforms.get(nodeName);
+    if(transform == null) this.__nodesRelativeTransforms.set(nodeName, (transform = {t: null, r: null, s: null, m: null }));
+    
+    transform.r = quaternion.toVector4f();
+}
+
+glTFAnimator.prototype.setScale = function(nodeName, scale) 
+{
+    let transform = this.__nodesRelativeTransforms.get(nodeName);
+    if(transform == null) this.__nodesRelativeTransforms.set(nodeName, (transform = {t: null, r: null, s: null, m: null }));
+    
+    transform.s = new glVector3f(scale);
+}
+
+glTFAnimator.prototype.setTransform = function(nodeName, matrix) 
+{
+    let transform = this.__nodesRelativeTransforms.get(nodeName);
+    if(transform == null) this.__nodesRelativeTransforms.set(nodeName, (transform = {t: null, r: null, s: null, m: null }));
+    
+    transform.m = new glMatrix4x4f(matrix);
 }
 
 glTFAnimator.prototype.getTransform = function(nodeName)
@@ -916,6 +959,53 @@ glTFAnimator.prototype.getJointNodeID = function(jointID) {
 
 glTFAnimator.prototype.getBonesPairs = function() {
     return this.__bones;
+}
+
+glTFAnimator.prototype.getAnimatedVertex = function(vertex)
+{ 
+    if(this.__activeAnimation == null) return vertex;
+
+    let animationMatrix = glMatrix4x4f.identityMatrix(); 
+    if(vertex.animationID >= 0 && vertex.animationID < 255) animationMatrix = this.__animationMatricesCurrentFrame[vertex.animationID];
+
+    let hasSkin = false;                                                                                                                                
+    let skinMatrix = new glMatrix4x4f([ 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0 ]);
+
+    let weightSum = (vertex.bonesWeights.x + vertex.bonesWeights.y + vertex.bonesWeights.z + vertex.bonesWeights.w);
+    if(weightSum <= 0.0) weightSum = 1.0;
+
+    let bonesWeights = [ vertex.bonesWeights.x / weightSum, 
+                         vertex.bonesWeights.y / weightSum, 
+                         vertex.bonesWeights.z / weightSum, 
+                         vertex.bonesWeights.w / weightSum ];
+
+    for(let i = 0; i < 4; ++i)
+    {
+        if(bonesWeights[i] > 0.0 && vertex.bonesIndices[i] >= 0 && vertex.bonesIndices[i] < 255)
+        {
+            for(let j = 0; j < 16; ++j) skinMatrix.__m[j] += bonesWeights[i] * this.__bonesMatricesCurrentFrame[vertex.bonesIndices[i]].__m[j];
+            hasSkin = true;
+        }
+    }
+
+    if(hasSkin) animationMatrix.mul(skinMatrix);                                                                                            
+    
+    let animationNormalMatrix = glMatrix4x4f.normalMatrix(animationMatrix);
+
+    let animatedVertex = new glVertex(vertex);
+
+    animatedVertex.position = glMatrix4x4f.mul(animationMatrix, vertex.position);
+    animatedVertex.normal = glMatrix4x4f.mul(animationNormalMatrix, vertex.normal);
+
+    let animatedTangent = new glVector3f(vertex.tangent.x, vertex.tangent.y, vertex.tangent.z);
+    animatedTangent = glMatrix4x4f.mul(animationNormalMatrix, animatedTangent);
+    animatedVertex.tangent = new glVector4f(animatedTangent.x, animatedTangent.y, animatedTangent.z, vertex.tangent.w);
+
+    animatedVertex.bonesWeights = new glVector4f(0.0);
+    animatedVertex.bonesIndices = [-1, -1, -1, -1];
+    animatedVertex.animationMatrixID = -1;
+
+    return animatedVertex;
 }
 
 glTFAnimator.prototype.playAnimation = function(animation, repeatMode, onFinish, transitionTime)
@@ -1438,17 +1528,17 @@ glTFLoader.prototype._postprocess = function ()
         if(this.textureAmbientOcclusion == null) this.textureAmbientOcclusion = -1;
         if(this.textureMetallicRoughness == null) this.textureMetallicRoughness = -1;
         
-        if(this.textureDiffuse < 0 && material.pbrMetallicRoughness.baseColorFactor != null) this.diffuseMultiplier.set(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
-        if(this.textureEmissive < 0 && material.emissiveFactor != null) this.emissiveMultiplier.set(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
-        if(this.textureMetallicRoughness < 0 && material.pbrMetallicRoughness.roughnessFactor != null) this.roughnessMultiplier = material.pbrMetallicRoughness.roughnessFactor;
-        if(this.textureMetallicRoughness < 0 && material.pbrMetallicRoughness.metallicFactor != null) this.metallicMultiplier = material.pbrMetallicRoughness.metallicFactor;
+        if(material.pbrMetallicRoughness.baseColorFactor != null) this.diffuseMultiplier.set(material.pbrMetallicRoughness.baseColorFactor[0], material.pbrMetallicRoughness.baseColorFactor[1], material.pbrMetallicRoughness.baseColorFactor[2]);
+        if(material.emissiveFactor != null) this.emissiveMultiplier.set(material.emissiveFactor[0], material.emissiveFactor[1], material.emissiveFactor[2]);
+        if(material.pbrMetallicRoughness.roughnessFactor != null) this.roughnessMultiplier = material.pbrMetallicRoughness.roughnessFactor;
+        if(material.pbrMetallicRoughness.metallicFactor != null) this.metallicMultiplier = material.pbrMetallicRoughness.metallicFactor;
     
         if(material.extensions != null && material.extensions.KHR_materials_pbrSpecularGlossiness != null)
         {
             let extension = material.extensions.KHR_materials_pbrSpecularGlossiness;
             
             if(this.textureDiffuse < 0 && extension.diffuseTexture != null) this.textureDiffuse = extension.diffuseTexture.index;
-            if(this.textureDiffuse < 0 && extension.diffuseFactor  != null) this.diffuseMultiplier.set(extension.diffuseFactor[0], extension.diffuseFactor[1], extension.diffuseFactor[2]);
+            if(extension.diffuseFactor != null) this.diffuseMultiplier.set(extension.diffuseFactor[0], extension.diffuseFactor[1], extension.diffuseFactor[2]);
         
             if(this.textureDiffuse == null) this.textureDiffuse = -1;
         }

@@ -257,6 +257,31 @@ glMatrix4x4f.prototype.mul = function(other)
     else                            return this.__mul_mat4x4(other);
 }
 
+glMatrix4x4f.prototype.hash = function()
+{
+    let hash = new Uint32Array([0.0]);
+    let mU32 = new Uint32Array(this.__m.buffer);
+
+    // Prime numbers for mixing
+    const p1 = 73856093;
+    const p2 = 19349663;
+    const p3 = 83492791;
+
+    for (let i = 0; i < 16; ++i)
+    {
+        let x = 1 + (i % 4);
+        let y = 1 + (Math.floor(i / 4));
+
+        hash[0] ^= (mU32[i] * ((x * p1) ^ (y * p2))) ^ p3;
+    }
+
+    return hash[0];
+}
+
+glMatrix4x4f.compare = function(ma, mb) {
+    return (ma.hash() == mb.hash());
+}
+
 glMatrix4x4f.mul = function(a, b) {
     return (new glMatrix4x4f(a)).mul(b);
 }

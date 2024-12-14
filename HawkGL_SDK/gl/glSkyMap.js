@@ -62,6 +62,7 @@ let glSkyMap = function(ctx)
 
     this.__timeDate = glSkyMap.dateNow();
     this.__lastTimeDate = new glVector4f(0);
+    this.__meteorsPerHour = 0.0;
     this.__dayFactor = 0.0;
     
     this.__latitudeDeg = 51.5072; // london latitude
@@ -453,7 +454,7 @@ glSkyMap.__genAtmosphereProgram = function(ctx)
                                      "     t+=td;                                                                                                                                                                                    \n" +
                                      "   }                                                                                                                                                                                           \n" +
                                      "                                                                                                                                                                                               \n" +
-                                     "   return cloudCol;                                                                                                                                                                            \n" +
+                                     "   return cloudCol * 0.0;                                                                                                                                                                            \n" +
                                      " }                                                                                                                                                                                             \n" +
                                      "                                                                                                                                                                                               \n" +
                                      " // Frame rendering function with option to set arbitrary rendering resolution                                                                                                                 \n" +
@@ -614,7 +615,10 @@ glSkyMap.__genHDRIProgram = function(ctx)
                                      " uniform mediump vec3 sunVector;                                                                                                                       \n" +
                                      " uniform mediump vec3 moonVector;                                                                                                                      \n" +
                                      " uniform mediump mat3 earthTransform;                                                                                                                  \n" +
+                                     " uniform mediump float meteorsPerHour;                                                                                                                  \n" +
+                                     " uniform mediump int glFrameID;                                                                                                                        \n" +
                                      "                                                                                                                                                       \n" +
+                                     " #define glTime (float(glFrameID) / 60.0)                                                                                                              \n" +
                                      " const vec3 glViewport = vec3(4096, 4096, 1);                                                                                                          \n" +
                                      "                                                                                                                                                       \n" +
                                      " uniform mediump sampler2D starsTexture;                                                                                                               \n" +
@@ -788,6 +792,21 @@ glSkyMap.__genHDRIProgram = function(ctx)
                                      "    return normalize(vec2(-1.0 + 2.0 * random(), -1.0 + 2.0 * random())) * random();                                                                   \n" +
                                      " }                                                                                                                                                     \n" +
                                      "                                                                                                                                                       \n" +
+                                     "float rayLineSegmentDistance(in vec3 rD, in vec3 lS, in vec3 lE)                                                                                       \n" +
+                                     "{                                                                                                                                                      \n" +
+                                     "    float bL = length(lE - lS);                                                                                                                        \n" +
+                                     "    vec3 bD = (lE - lS) / bL;                                                                                                                          \n" +
+                                     "    vec3 tD = lS;                                                                                                                                      \n" +
+                                     "    float aDb = dot(rD, bD);                                                                                                                           \n" +
+                                     "    float aDt = dot(rD, tD);                                                                                                                           \n" +
+                                     "    float bDt = dot(bD, tD);                                                                                                                           \n" +
+                                     "    float u = (aDt - bDt * aDb) / (1.0 - aDb * aDb);                                                                                                   \n" +
+                                     "    float v = max(min(u * aDb - bDt, bL), 0.0);                                                                                                        \n" +
+                                     "    u = max(min(v * aDb + aDt, 1e6), 0.0);                                                                                                             \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "    return length((rD * u) - (lS + bD * v));                                                                                                           \n" +
+                                     "}                                                                                                                                                      \n" +
+                                     "                                                                                                                                                       \n" +
                                      " void main()                                                                                                                                           \n" +
                                      " {                                                                                                                                                     \n" +
                                      "     vec3 dir = viewDir(texCoords, 1.0);                                                                                                               \n" +
@@ -832,6 +851,35 @@ glSkyMap.__genHDRIProgram = function(ctx)
                                      "     stars = max(stars - (shimmering * l * smoothstep(0.0, 0.0125, l)) * texture(noiseTexture, texCoords * 60.0 + glTime * 0.075).x, vec3(0));         \n" +
                                      "     stars *= getDayFactor(dir.y) * SPACE_ILLUMINANCE * max(1.0 - 3.0 * color.a, 0.0);                                                                 \n" +
                                      "     color.rgb += stars;                                                                                                                               \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "     // Shooting stars                                                                                                                                 \n" +
+                                     "     const float meteorsLifeTime = 3.0;                                                                                                                \n" +
+                                     "     float meteorLife = ((meteorsPerHour > 0.0) ? fract(min(mod(glTime, 3600.0 / meteorsPerHour), meteorsLifeTime) / meteorsLifeTime) : 0.0);          \n" +
+                                     "     if(meteorLife > 0.0 && meteorLife < 1.0)                                                                                                          \n" +
+                                     "     {                                                                                                                                                 \n" +
+                                     "         srand(floor(glTime / meteorsLifeTime));                                                                                                       \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         vec3 meteorEntryPoint = vec3(randomVec2(), 1).xzy;                                                                                            \n" +
+                                     "         if(length(meteorEntryPoint.xz) < 4.0) meteorEntryPoint.xz = 4.0 * normalize(meteorEntryPoint.xz);                                             \n" +
+                                     "         meteorEntryPoint = normalize(meteorEntryPoint) * 10000.0;                                                                                     \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         vec3 meteorDirection = normalize(vec3(randomVec2(), 0).xzy);                                                                                  \n" +
+                                     "         if(dot(meteorDirection.xz, meteorEntryPoint.xz) < 0.0) meteorDirection.xz = -meteorDirection.xz;                                              \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         float s1 = smoothstep(0.0, 0.2, meteorLife);                                                                                                  \n" +
+                                     "         float s2 = smoothstep(1.0, 0.2, meteorLife);                                                                                                  \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         float meteorLength = 5000.0 + 5000.0 * random();                                                                                              \n" +
+                                     "         vec3  meteorPosition = meteorEntryPoint + meteorDirection * meteorLength * s1 * s1;                                                           \n" +
+                                     "         float meteorTrailSD = rayLineSegmentDistance(dir, meteorEntryPoint, meteorPosition);                                                          \n" +
+                                     "         float meteorHeadSD = pow(meteorTrailSD * length(cross(dir, meteorPosition)), 0.25);                                                           \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         vec3 meteorColor = vec3(0.25) * SPACE_ILLUMINANCE * smoothstep(2.0, 0.0, meteorTrailSD) * s2 * s1 +                                           \n" +
+                                     "                            vec3(3.0)  * SPACE_ILLUMINANCE * smoothstep(5.0, 1.0, meteorHeadSD)  * (1.0 - s1 * s1 * s1) * s1;                          \n" +
+                                     "                                                                                                                                                       \n" +
+                                     "         color.rgb += meteorColor * max(1.0 - 2.0 * color.a, 0.0);                                                                                     \n" +
+                                     "     }                                                                                                                                                 \n" +
+                                     "                                                                                                                                                       \n" +
                                      "     color.rgb = max(color.rgb, vec3(0));                                                                                                              \n" +
                                      "                                                                                                                                                       \n" +
                                      "     // Tonemapping                                                                                                                                    \n" +
@@ -842,9 +890,11 @@ glSkyMap.__genHDRIProgram = function(ctx)
 
         if(!program.compile()) console.error(program.getLastError());
         
+        program.__uniformFrameID = program.createUniformInt("glFrameID");
         program.__uniformSunVector = program.createUniformVec3("sunVector");
         program.__uniformMoonVector = program.createUniformVec3("moonVector");
         program.__uniformEarthTransform = program.createUniformMat3("earthTransform");
+        program.__uniformMeteorsPerHour = program.createUniformFloat("meteorsPerHour");
         
         program.createUniformSampler("atmosphereTexture", 0);
         program.createUniformSampler("cloudsTexture",     1);
@@ -939,7 +989,7 @@ glSkyMap.prototype.__updateBlackBodiesPositions = function()
     // Earth Transform
     let tiltDeg = 23.4;
     let timeOfDaySec = UT * 3600.0;
-    timeOfDaySec -= 1.5 * 3600.0; // subtract ~1.5 hr for DST convention
+    timeOfDaySec -= 0.75 * 3600.0; // subtract ~0.75 hr for DST convention
 
     let earthSpin = -361.0 * (timeOfDaySec / 86400.0) + 180.0;
 
@@ -981,6 +1031,9 @@ glSkyMap.prototype.__updateBlackBodiesPositions = function()
     this.__envMap.setDirectionalLightVector(this.__directionalLightVector);
    // this.__envMap.setDirectionalLightColor(this.__directionalLightColor);
     this.__envMap.setDirectionalLightColor(null);
+
+    // Shooting stars
+    this.__meteorsPerHour = ((m == 8) ? 200 : 7); // Perseid meteor shower in August
 }
 
 glSkyMap.prototype.setStarsTexture = function(texture) {
@@ -1111,8 +1164,10 @@ glSkyMap.prototype.update = function()
         ++this.__iterationID;
     }
 
+    this.__hdriProgram.__uniformFrameID.set(this.__iterationID);
     this.__hdriProgram.__uniformSunVector.set(this.__sunVector);
     this.__hdriProgram.__uniformMoonVector.set(this.__moonVector);
+    this.__hdriProgram.__uniformMeteorsPerHour.set(this.__meteorsPerHour);
     this.__hdriProgram.__uniformEarthTransform.set(this.__earthTransform);
 
     let currStateID = ((this.__iterationID + 1) % 2);

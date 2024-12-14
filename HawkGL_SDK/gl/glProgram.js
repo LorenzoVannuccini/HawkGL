@@ -40,6 +40,227 @@ glShader.prototype.getLastError = function() {
     return this.__ctx.getShaderInfoLog(this.__shaderID);
 }
 
+glShader.__strReplaceAll = function(input_str, find, replace, fromIndex) 
+{
+    function escapeRegExp(str) {
+        return str.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+    }
+
+    // Create a word-boundary regex to match whole words
+    var regex = new RegExp('\\b' + escapeRegExp(find) + '\\b', 'g');
+
+    let str = input_str;
+    if(fromIndex != null) str = input_str.substring(fromIndex);
+
+    str = str.replace(regex, replace);
+
+    if(fromIndex != null) str = input_str.substring(0, fromIndex) + str;
+
+    return str;
+}
+
+glShader.__strReplaceFunctionCall = function(str, functionName, newName)
+{
+    // Create a regular expression to match the key followed by optional spaces and an opening parenthesis
+    const regex = new RegExp(`(?<!\\.)\\b${functionName}\\s*\\(`, 'g');
+    
+    // Replace all occurrences of the key followed by optional spaces and '(' with the new key followed by '('
+    return str.replace(regex, `${newName}(`);
+}
+
+glShader.__appendToCommentedLines = function(inputStr, appendStr) {
+    return inputStr.replace(/^.*\/\/.*$/gm, match => match + appendStr);
+}
+
+glShader.__parseConstructorCalls = function(inputString, constructors) 
+{
+    constructors.forEach( constructorName => {
+        inputString = glShader.__strReplaceFunctionCall(inputString, constructorName, "_call_constructor_x" + constructorName + "x_");
+    });
+
+    return inputString;
+}
+
+glShader.__injectSrcBlock = function(inputString, atIndex, beginSrc, endSrc)
+{
+    let singleLineComment = false;
+    let multiLineComment  = false;
+    
+    let srcBlockBeginIndex = -1;
+    let srcBlockEndIndex = -1;
+    let bracketsCount = 0;
+
+    let preceedingString = inputString.slice(0, atIndex);
+    inputString = inputString.slice(atIndex);
+    
+    for(let i = 0, e = inputString.length; (i != e && srcBlockEndIndex < 0); ++i)
+    {
+        let c = inputString[i];
+        
+        if(i > 0)
+        {
+            let c2 = (inputString[i - 1] + c);
+
+            if(c  == "\n") singleLineComment = false;
+            if(c2 == "//") singleLineComment = true;
+            if(c2 == "/*" && !singleLineComment) multiLineComment  = true;
+            if(c2 == "*/") multiLineComment = false;
+        }
+
+        let is_comment = (singleLineComment || multiLineComment);
+        if(!is_comment)
+        {
+            if(c == "{" && (++bracketsCount == 1)) srcBlockBeginIndex = i;
+            if(c == "}" && (--bracketsCount == 0)) srcBlockEndIndex = i;
+        }
+    }
+
+    if(srcBlockBeginIndex >= 0 && srcBlockEndIndex >= 0)
+    {
+        let a = inputString.slice(0, srcBlockBeginIndex + 1);
+        let b = inputString.slice(srcBlockBeginIndex + 1, srcBlockEndIndex);
+        let c = inputString.slice(srcBlockEndIndex);
+
+        inputString = a + beginSrc + b + endSrc + c;
+    }
+
+    return preceedingString + inputString;
+}
+
+glShader.__parseMethodCalls = function(inputString, methods, staticMethods, recursionCount) 
+{
+    if(recursionCount == null) recursionCount = 0;
+
+    if(recursionCount >= glShader.__parserRecursionMaxIterations) // safe-guard
+    {
+        glShader.__parserAborted = true;
+        return inputString;
+    }
+
+    if(methods.size == 0) return inputString;
+
+    // Define the regular expression pattern for matching object method calls
+    let pattern = /([\w\[\]\.]+)\s*\.\s*(\w+)\s*\(([^)]*)\)/g;
+
+    // Define a variable to hold the match results
+    let match;
+    
+    // Define a string to build the modified string
+    let modifiedString = inputString;
+    let parsingComplete = true;
+
+    // Loop through all matches in the input string
+    for(let i = 0; ((match = pattern.exec(inputString)) !== null && !glShader.__parserAborted); ++i)
+    {
+        if(i >= glShader.__parserMatchMaxIterations) // safe-guard
+        {
+            glShader.__parserAborted = true;
+            break;
+        }
+
+        let methodName = match[2];
+
+        let staticMethod = staticMethods.has(methodName);
+        if(!staticMethod && !methods.has(methodName)) continue;
+        
+        // Capture the object name, method name, and parameters
+        let objectName = match[1];
+        let params = match[3].trim();
+        
+        // strip comments
+        let hasParams = (params.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').length > 0);
+        
+        // Construct the new method call
+        let newMethodCall = staticMethod ? `_call_static_method_x${objectName}x_x${methodName}x_(${params})`
+                                         : `_call_method_x${methodName}x_(${objectName}` + (hasParams ? `, ` : ``) + `${params})`;
+        
+        // Replace each matched pattern with the new method call format
+        modifiedString = modifiedString.replace(match[0], newMethodCall);
+        parsingComplete = false;
+    }
+    
+    if(!parsingComplete) modifiedString = glShader.__parseMethodCalls(modifiedString, methods, staticMethods, recursionCount + 1);
+
+    // Return the modified string
+    return modifiedString;
+}
+
+glShader.__parseMethodDefinitions = function(inputString) 
+{
+    inputString = glShader.__appendToCommentedLines(inputString, " //");
+    inputString = glShader.__strReplaceAll(inputString, "this", "_this");
+    
+    // Define the regular expression pattern for capturing class names and keywords
+    let pattern = /(?:\b(\w+)\b\s+)?(\w+\s+)?(\w+)\s*::\s*(\w+)\s*\(([^)]*)\)(?:\s+\b(\w+)\b)?/g;
+     
+    let methods = [], staticMethods = [], constructors = [];
+
+    // Define a variable to hold the match results
+    let match;
+    
+    // Loop through all matches in the input string
+    for(let i = 0; ((match = pattern.exec(inputString)) !== null && !glShader.__parserAborted); ++i)
+    {
+        if(i >= glShader.__parserMatchMaxIterations) // safe-guard
+        {
+            glShader.__parserAborted = true;
+            break;
+        }
+
+        // Capture the class name and method name
+        let preceedingWord = match[1];
+        let returnType = match[2];
+        let className = match[3];
+        let methodName = match[4];
+        let params = match[5].trim();
+        let followingWord = match[6];
+
+        // strip comments
+        let hasParams = (params.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').length > 0);
+
+        // Determine the replacement pattern
+        let isConstructor = (className == methodName);
+        
+        if(followingWord  == null) followingWord = "";
+        if(preceedingWord == null) preceedingWord = "";
+        if(returnType     == null) returnType = "";
+        
+        // combine preceeding word and return type in the same match
+        returnType = preceedingWord + " " + returnType;
+
+        let returnTypeCommentStripped = returnType.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+        let followingWordCommentStripped = followingWord.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+
+        let staticMethod = /\bstatic\b/i.test(returnTypeCommentStripped);
+        let constMethod  = /\bconst\b/i.test(followingWordCommentStripped);
+
+        // Add the captured method name to the keywords array
+        if(isConstructor) constructors.push(methodName);
+        else if(staticMethod) staticMethods.push(methodName);
+        else methods.push(methodName);
+
+        if(staticMethod && !isConstructor) returnType = glShader.__strReplaceAll(returnType, "static", "");
+
+        let thisQualifier = (constMethod ? "const" : "inout");
+
+        let newPattern = isConstructor ? (`${returnType} ${className} _call_constructor_x${className}x_(${params}) ${followingWord}`) :
+                         staticMethod  ? (`${returnType} _call_static_method_x${className}x_x${methodName}x_(${params}) ${followingWord}`)
+                                       : (`${returnType} _call_method_x${methodName}x_(${thisQualifier} ${className} _this` +  (hasParams ? `, ` : ``) + `${params})`);
+                               
+        if(isConstructor) inputString = glShader.__injectSrcBlock(inputString, match.index, " " + className + " _this; ", " return _this; ");
+
+        inputString = inputString.replace(match[0], newPattern);
+    }
+
+    // Replace all occurrences of "::" with "_" in the modified string
+    inputString = inputString.replace(/\s*::\s*/g, '_');
+
+    if(constructors.length > 0) inputString = glShader.__parseConstructorCalls(inputString, new Set(constructors));
+    if(methods.length > 0 || staticMethods.length > 0) inputString = glShader.__parseMethodCalls(inputString, new Set(methods), new Set(staticMethods));
+    
+    return inputString;
+}
+
 glShader.prototype.compile = function(header, shaderSource)
 {
     if(header != null && header.length > 0)
@@ -48,6 +269,20 @@ glShader.prototype.compile = function(header, shaderSource)
         if(appendingIndex < 0) appendingIndex = (shaderSource.length - 1);
 
         shaderSource = shaderSource.substr(0, appendingIndex + 1) + header + shaderSource.substr(appendingIndex + 1);
+    }
+
+    if(/\bclass\b/i.test(shaderSource)) // serialize object-oriented code
+    {
+        glShader.__parserAborted = false;
+        glShader.__parserMatchMaxIterations = 1000000;
+        glShader.__parserRecursionMaxIterations = 256;
+        
+        shaderSource = glShader.__strReplaceAll(shaderSource, "class", "struct");
+        shaderSource = glShader.__parseMethodDefinitions(shaderSource);
+
+        if(glShader.__parserAborted) console.error("ERROR: shader parsing aborted, iteration limit reached!");
+
+        // console.log(shaderSource);
     }
 
     this.__ctx.shaderSource(this.__shaderID, shaderSource);
@@ -185,6 +420,18 @@ glProgram.prototype.createUniformSamplerData = function(name, unitID)
 
     this.__dataSamplers.set(name, uniform);
    
+    return uniform;
+}
+
+glProgram.prototype.createUniformSamplerGeoData = function(name, nodesUnitID, attribUnitID, verticesUnitID, trianglesUnitID)
+{
+    let uniform = new glUniformSamplerGeoData(this.__ctx.getGL(), this, name, nodesUnitID, attribUnitID, verticesUnitID, trianglesUnitID);
+    
+    this.__uniforms.set(name + ".vertexSampler", uniform.__vertexSampler);
+    this.__uniforms.set(name + ".attribSampler", uniform.__attribSampler);
+    this.__uniforms.set(name + ".faceSampler",   uniform.__faceSampler);
+    this.__uniforms.set(name + ".nodeSampler",   uniform.__nodeSampler);
+    
     return uniform;
 }
 
