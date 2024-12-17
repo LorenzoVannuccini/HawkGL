@@ -1876,6 +1876,8 @@ glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, 
 {
     let environmentMap = new glEnvironmentMap(this, this.createTexture(image, function(texture)
     {
+        environmentMap.setTexture(texture, customWidth, customHeight);
+
         environmentMap.setDirectionalLightColor(texture.directionalLightColor);
         environmentMap.setDirectionalLightVector(texture.directionalLightVector);
                 
@@ -2606,7 +2608,7 @@ glContext.prototype.setOrthographicProjection = function(left, right, bottom, to
 
 glContext.prototype.setShadowViewProjectionMatrix = function(lightVector, aabbCenter, aabbSize)
 {
-    this.setOrthographicProjection(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+    this.setOrthographicProjection(-1.0, 1.0, -1.0, 1.0, -1.0, +1.0);
     this.lookAt(aabbCenter, glVector3f.add(aabbCenter, lightVector));
     
     let modelViewProjectionMatrix = this.getModelViewProjectionMatrix();
@@ -2650,7 +2652,7 @@ glContext.prototype.setShadowViewProjectionMatrix = function(lightVector, aabbCe
     let aabbProjectedSize = glVector3f.abs(glVector3f.sub(aabbProjectedMax, aabbProjectedMin)).mul(0.5);
     let aabbProjectedCenter = glVector3f.add(aabbProjectedMin, aabbProjectedMax).mul(0.5);
     
-    this.setOrthographicProjection(-aabbProjectedSize.x, aabbProjectedSize.x, -aabbProjectedSize.y, aabbProjectedSize.y, -aabbProjectedSize.z, aabbProjectedSize.z);
+    this.setOrthographicProjection(-aabbProjectedSize.x, aabbProjectedSize.x, -aabbProjectedSize.y, aabbProjectedSize.y, -1e4, +1e4);
     this.translate(-aabbProjectedCenter.x, -aabbProjectedCenter.y, -aabbProjectedCenter.z);
     
     return this.getModelViewProjectionMatrix();

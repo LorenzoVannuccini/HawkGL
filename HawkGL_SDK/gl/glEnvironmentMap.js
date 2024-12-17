@@ -26,10 +26,7 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__ctx = ctx;
     let gl = ctx.getGL();
     
-    if(size == null) size = Math.max(skyMap.getWidth(), skyMap.getHeight());
-    size = Math.min(Math.max(closestPot(size), 1024), 4096);
-    
-    let halfSize = Math.floor(size * 0.5);
+    this.setTexture(skyMap, size);
 
     this.__envMappingProgram = glEnvironmentMap.__genEnvMappingProgram(ctx);
     this.__skyMapIntensityUniform = this.__envMappingProgram.getUniform("skyMapIntensity");
@@ -43,26 +40,7 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__directionalLightVector = new glVector3f(0);
     this.__directionalLightColor  = new glVector3f(0);
     this.__pendingRadianceIntegrationSteps = 1024;
-    
-    this.__faceFramebuffer = new glFramebuffer(ctx, halfSize, halfSize);
-    this.__faceMap = this.__faceFramebuffer.createColorAttachmentRGBA16F();
-    this.__faceFramebuffer.createDepthAttachment16();
-
-    this.__faceMap.setFilterMode(gl.LINEAR, gl.LINEAR);
-    this.__faceMap.setWrapMode(gl.CLAMP_TO_EDGE);
-
-    this.__environmentFramebuffer = null; 
-    this.__environmentMap = null; 
-
-    this.__environmentFramebuffer = new glFramebuffer(ctx, size, size);
-    this.__environmentMap = this.__environmentFramebuffer.createColorAttachmentRGBA16F();
-    this.__environmentMap.setWrapMode(gl.CLAMP_TO_EDGE);
-    this.__environmentMap.generateMipmap(false);
-    
-    this.__radianceLutFramebuffer = new glFramebuffer(ctx, 512, 512);
-    let mipLod_512x = (1 + Math.floor(Math.log2(Math.max(this.__environmentMap.getWidth(), this.__environmentMap.getHeight())))) - 10; 
-    this.__radianceLUT = this.__radianceLutFramebuffer.createColorAttachmentRGBA16F(this.__environmentMap.__renderTexture, mipLod_512x);
-    
+        
     this.__radianceFramebuffer = [new glFramebuffer(ctx, 512, 512), new glFramebuffer(ctx, 512, 512)];
     this.__radianceIntegral = [null, null];
     this.__radianceResolved = [null, null];
@@ -83,13 +61,44 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
         this.__radianceResolved[i].setWrapMode(gl.CLAMP_TO_EDGE);
         this.__radianceSmoothed[i].setWrapMode(gl.CLAMP_TO_EDGE);
     }
-    
-    this.__onDrawCallback = onDrawCallback;
-    this.__skyMapGammaSpace = this.__skyMap = skyMap;
-    if(skyMap.__renderTexture != null) this.__skyMapGammaSpace = null;
-     
+   
+    this.__onDrawCallback = onDrawCallback; 
     this.__faceID = 0;
 }  
+
+glEnvironmentMap.prototype.setTexture = function(skyMap, size)
+{
+    let gl = ctx.getGL();
+   
+    this.free();
+
+    if(size == null) size = Math.max(skyMap.getWidth(), skyMap.getHeight());
+    size = Math.min(Math.max(closestPot(size), 1024), 4096);
+    
+    let halfSize = Math.floor(size * 0.5);
+
+    this.__faceFramebuffer = new glFramebuffer(ctx, halfSize, halfSize);
+    this.__faceMap = this.__faceFramebuffer.createColorAttachmentRGBA16F();
+    this.__faceFramebuffer.createDepthAttachment16();
+
+    this.__faceMap.setFilterMode(gl.LINEAR, gl.LINEAR);
+    this.__faceMap.setWrapMode(gl.CLAMP_TO_EDGE);
+
+    this.__environmentFramebuffer = null; 
+    this.__environmentMap = null; 
+
+    this.__environmentFramebuffer = new glFramebuffer(ctx, size, size);
+    this.__environmentMap = this.__environmentFramebuffer.createColorAttachmentRGBA16F();
+    this.__environmentMap.setWrapMode(gl.CLAMP_TO_EDGE);
+    this.__environmentMap.generateMipmap(false);
+
+    this.__skyMapGammaSpace = this.__skyMap = skyMap;
+    if(skyMap.__renderTexture != null) this.__skyMapGammaSpace = null;
+
+    this.__radianceLutFramebuffer = new glFramebuffer(ctx, 512, 512);
+    let mipLod_512x = (1 + Math.floor(Math.log2(Math.max(this.__environmentMap.getWidth(), this.__environmentMap.getHeight())))) - 10; 
+    this.__radianceLUT = this.__radianceLutFramebuffer.createColorAttachmentRGBA16F(this.__environmentMap.__renderTexture, mipLod_512x);
+}
 
 glEnvironmentMap.__genEnvMappingProgram = function(ctx)
 {
@@ -510,10 +519,12 @@ glEnvironmentMap.__genGammaSpaceToLinearBlitProgram = function(ctx)
 
 glEnvironmentMap.prototype.free = function()
 {
-    this.__environmentFramebuffer.free();
+    if(this.__radianceLutFramebuffer != null) this.__radianceLutFramebuffer.free();
+    if(this.__environmentFramebuffer != null) this.__environmentFramebuffer.free();
+    if(this.__faceFramebuffer != null) this.__faceFramebuffer.free();
+
+    this.__radianceLutFramebuffer = null;
     this.__environmentFramebuffer = null;
-    
-    this.__faceFramebuffer.free();
     this.__faceFramebuffer = null;
 }
 
