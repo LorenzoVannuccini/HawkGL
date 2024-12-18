@@ -1876,7 +1876,7 @@ glContext.prototype.createEnvironmentMap = function(image, onLoad, customWidth, 
 {
     let environmentMap = new glEnvironmentMap(this, this.createTexture(image, function(texture)
     {
-        environmentMap.setTexture(texture, customWidth, customHeight);
+        environmentMap.__updateSkyMap(texture, customWidth, customHeight);
 
         environmentMap.setDirectionalLightColor(texture.directionalLightColor);
         environmentMap.setDirectionalLightVector(texture.directionalLightVector);

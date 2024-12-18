@@ -26,7 +26,7 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__ctx = ctx;
     let gl = ctx.getGL();
     
-    this.setTexture(skyMap, size);
+    this.__updateSkyMap(skyMap, size);
 
     this.__envMappingProgram = glEnvironmentMap.__genEnvMappingProgram(ctx);
     this.__skyMapIntensityUniform = this.__envMappingProgram.getUniform("skyMapIntensity");
@@ -66,11 +66,13 @@ let glEnvironmentMap = function(ctx, skyMap, size, onDrawCallback)
     this.__faceID = 0;
 }  
 
-glEnvironmentMap.prototype.setTexture = function(skyMap, size)
+glEnvironmentMap.prototype.__updateSkyMap = function(skyMap, size)
 {
     let gl = ctx.getGL();
    
-    this.free();
+    if(this.__radianceLutFramebuffer != null) this.__radianceLutFramebuffer.free();
+    if(this.__environmentFramebuffer != null) this.__environmentFramebuffer.free();
+    if(this.__faceFramebuffer != null) this.__faceFramebuffer.free();
 
     if(size == null) size = Math.max(skyMap.getWidth(), skyMap.getHeight());
     size = Math.min(Math.max(closestPot(size), 1024), 4096);
@@ -519,6 +521,12 @@ glEnvironmentMap.__genGammaSpaceToLinearBlitProgram = function(ctx)
 
 glEnvironmentMap.prototype.free = function()
 {
+    for(let i = 0; i < 2; ++i)
+    {
+        if(this.__radianceFramebuffer[i] != null) this.__radianceFramebuffer[i].free();
+        this.__radianceFramebuffer[i] = null;
+    }
+
     if(this.__radianceLutFramebuffer != null) this.__radianceLutFramebuffer.free();
     if(this.__environmentFramebuffer != null) this.__environmentFramebuffer.free();
     if(this.__faceFramebuffer != null) this.__faceFramebuffer.free();
