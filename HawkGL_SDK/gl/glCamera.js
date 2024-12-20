@@ -149,6 +149,39 @@ glCamera.prototype.lookAt = function(x, y, z) {
     this.setOrientation(glVector3f.normalize(glVector3f.sub(new glVector3f(x, y, z), this.__position)), this.getUp());
 }
 
+glCamera.prototype.toJSON = function(decimals)
+{
+    if(decimals == null) decimals = 4;
+
+    let px = this.__targetPosition.x.toFixed(decimals);
+    let py = this.__targetPosition.y.toFixed(decimals);
+    let pz = this.__targetPosition.z.toFixed(decimals);
+
+    let qx = this.__targetOrientation.__x.toFixed(decimals);
+    let qy = this.__targetOrientation.__y.toFixed(decimals);
+    let qz = this.__targetOrientation.__z.toFixed(decimals);
+    let qw = this.__targetOrientation.__w.toFixed(decimals);
+    
+    return "[" + [px, py, pz, qx, qy, qz, qw].toString() + "]";
+}
+
+glCamera.prototype.fromJSON = function(str)
+{
+    let params = JSON.parse(str);
+
+    this.__targetPosition.x = parseFloat(params[0]);
+    this.__targetPosition.y = parseFloat(params[1]);
+    this.__targetPosition.z = parseFloat(params[2]);
+    
+    let qx = parseFloat(params[3]);
+    let qy = parseFloat(params[4]);
+    let qz = parseFloat(params[5]);
+    let qw = parseFloat(params[6]);
+
+    this.__targetOrientation.set(qx, qy, qz, qw);
+    this.__targetOrientation.normalize();
+}
+
 // ----------------------------------------------------------------------------------------
 
 let glArcBallCamera = function(ctx, radius)
